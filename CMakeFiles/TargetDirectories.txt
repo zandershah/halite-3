@@ -1,0 +1,3 @@
+/Users/ZanderShah/halite-3/CMakeFiles/rebuild_cache.dir
+/Users/ZanderShah/halite-3/CMakeFiles/edit_cache.dir
+/Users/ZanderShah/halite-3/CMakeFiles/MyBot.dir
