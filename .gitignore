@@ -42,3 +42,5 @@ CTestTestfile.cmake
 *.app
 
 MyBot
+replays/*
+*.log

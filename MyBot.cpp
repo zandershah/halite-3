@@ -2,11 +2,15 @@
 #include "hlt/constants.hpp"
 #include "hlt/log.hpp"
 
-#include <random>
-#include <ctime>
+#include <bits/stdc++.h>
 
 using namespace std;
 using namespace hlt;
+
+enum State {
+    kExploring,
+    kReturning
+};
 
 int main(int argc, char* argv[]) {
     unsigned int rng_seed;
@@ -25,29 +29,86 @@ int main(int argc, char* argv[]) {
 
     log::log("Successfully created bot! My Player ID is " + to_string(game.my_id) + ". Bot rng seed is " + to_string(rng_seed) + ".");
 
-    for (;;) {
+    // TODO: Tutorial Code.
+    unordered_map<int, State> ship_state;
+
+    while (1) {
         game.update_frame();
         shared_ptr<Player> me = game.me;
-        unique_ptr<GameMap>& game_map = game.game_map;
+        unique_ptr<GameMap> &game_map = game.game_map;
+
+        // Mark all ships.
+        for (const shared_ptr<Player> &p : game.players) {
+            for (const auto &ship_it : p->ships) {
+                shared_ptr<Ship> ship = ship_it.second;
+                MapCell *map_cell = game_map->at(ship->position);
+                map_cell->mark_unsafe(ship);
+            }
+        }
 
         vector<Command> command_queue;
 
         for (const auto& ship_iterator : me->ships) {
             shared_ptr<Ship> ship = ship_iterator.second;
-            if (game_map->at(ship)->halite < constants::MAX_HALITE / 10 || ship->is_full()) {
-                Direction random_direction = ALL_CARDINALS[rng() % 4];
-                command_queue.push_back(ship->move(random_direction));
-            } else {
-                command_queue.push_back(ship->stay_still());
+            State& s = ship_state[ship->id];
+            MapCell *map_cell = game_map->at(ship->position);
+
+            // Update Job.
+            if (!s) {
+                s = kExploring;
             }
+            if (s == kExploring && ship->halite >= constants::MAX_HALITE / 4) {
+                s = kReturning;
+            } else if (s == kReturning && ship->position == me->shipyard->position) {
+                s = kExploring;
+            }
+            if (game.turn_number > 350) {
+                s = kReturning;
+            }
+
+            // Execute Job.
+            Direction d;
+            if (s == kReturning) {
+                d = game_map->naive_navigate(ship, me->shipyard->position);
+
+                if (game.turn_number > 350 && game_map->calculate_distance(ship->position, me->shipyard->position) <= 1) {
+                    vector<Direction> ds = game_map->get_unsafe_moves(ship->position, me->shipyard->position);
+                    if (!ds.empty()) {
+                        d = ds.front();
+                    }
+                }
+            } else {
+                for (int i = 0; i < 1000; ++i) {
+                    d = ALL_CARDINALS[rng() % 4];
+                    MapCell *new_map_cell = game_map->at(ship->position.directional_offset(d));
+                    if (!new_map_cell->is_occupied())
+                        break;
+                    d = Direction::STILL;
+                }
+            }
+
+            if ((map_cell->halite / 10 > ship->halite || map_cell->halite >= constants::MAX_HALITE / 10) && !ship->is_full()) {
+                d = Direction::STILL;
+            }
+            map_cell->mark_safe();
+
+            map_cell = game_map->at(ship->position.directional_offset(d));
+            map_cell->mark_unsafe(ship);
+
+            command_queue.push_back(ship->move(d));
         }
 
-        if (
-            game.turn_number <= 200 &&
-            me->halite >= constants::SHIP_COST &&
-            !game_map->at(me->shipyard)->is_occupied())
-        {
-            command_queue.push_back(me->shipyard->spawn());
+        if (game.turn_number <= 300 &&
+            me->halite >= constants::SHIP_COST * max(1, game.turn_number / 100) &&
+            !game_map->at(me->shipyard)->is_occupied()) {
+            // Hack fix, proper solution is to have real navigation.
+            int full = 0;
+            for (Position p : me->shipyard->position.get_surrounding_cardinals()) {
+                full += game_map->at(p)->is_occupied();
+            }
+            if (full <= 2) {
+                command_queue.push_back(me->shipyard->spawn());
+            }
         }
 
         if (!game.end_turn(command_queue)) {
