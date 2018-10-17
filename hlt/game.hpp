@@ -18,6 +18,7 @@ namespace hlt {
         Game();
         void ready(const std::string& name);
         void update_frame();
+        bool ending() const;
         bool end_turn(const std::vector<Command>& commands);
     };
 }

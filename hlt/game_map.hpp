@@ -78,7 +78,7 @@ namespace hlt {
             for (auto direction : get_unsafe_moves(ship->position, destination)) {
                 Position target_pos = ship->position.directional_offset(direction);
                 if (!at(target_pos)->is_occupied()) {
-                    // at(target_pos)->mark_unsafe(ship);
+                    at(target_pos)->mark_unsafe(ship);
                     return direction;
                 }
             }

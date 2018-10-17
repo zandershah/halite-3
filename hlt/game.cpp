@@ -56,6 +56,10 @@ void hlt::Game::update_frame() {
     }
 }
 
+bool hlt::Game::ending() const {
+    return turn_number > constants::MAX_TURNS * 3 / 4;
+}
+
 bool hlt::Game::end_turn(const std::vector<hlt::Command>& commands) {
     for (const auto& command : commands) {
         std::cout << command << ' ';
