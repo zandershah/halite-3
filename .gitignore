@@ -42,6 +42,7 @@ CTestTestfile.cmake
 *.app
 
 MyBot
+halite
 replays/*
 *.log
 submit.zip
