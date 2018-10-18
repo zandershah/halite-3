@@ -32,6 +32,9 @@ int main(int argc, char* argv[]) {
             shared_ptr<Ship> ship = it.second;
             MapCell *map_cell = game_map->at(ship->position);
 
+            if (ship->task == kReturning)
+              continue;
+
             // Check if the ship has enough energy.
             if ((ship->halite >= constants::MAX_HALITE * 2 / 3 ||
                 game.ending()) &&
@@ -61,6 +64,11 @@ int main(int argc, char* argv[]) {
                     }
                 }
             } else {
+              for (int i = -game_map->height / game.players.size(); i <= game_map->height / game.players.size(); ++i) {
+                for (int j = -game_map->width / game.players.size(); i <= game_map->width/ game.players.size(); ++i) {
+                }
+              }
+
                 for (int i = 0; i < 1000; ++i) {
                     d = ALL_CARDINALS[rng() % 4];
                     MapCell *new_map_cell = game_map->at(ship->position.directional_offset(d));
