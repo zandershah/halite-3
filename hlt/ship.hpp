@@ -11,11 +11,13 @@ namespace hlt {
     struct Ship : Entity {
         Halite halite;
         Task task;
-        std::vector<Direction> path;
+        Position next;
 
         Ship(PlayerId player_id, EntityId ship_id, int x, int y, Halite halite) :
             Entity(player_id, ship_id, x, y),
-            halite(halite), task(Task::kNone)
+            halite(halite),
+            task(Task::kNone),
+            next(x, y)
         {}
 
         bool is_full() const {

@@ -29,13 +29,13 @@ void assign_tasks(Game& game) {
 void evaluate_tasks(Game& game) {}
 
 vector<Command> execute_tasks(Game& game) {
-    unordered_set<std::shared_ptr<Ship>> ships;
+    unordered_set<shared_ptr<Ship>> ships;
     for (const auto& it : game.me->ships) {
         ships.insert(it.second);
     }
     vector<Command> command_queue;
     while (!ships.empty()) {
-        auto it = std::max_element(ships.begin(), ships.end(), [&game](std::shared_ptr<Ship> u, std::shared_ptr<Ship> v) {
+        auto it = max_element(ships.begin(), ships.end(), [&game](shared_ptr<Ship> u, shared_ptr<Ship> v) {
             return game.compute_move(u) < game.compute_move(v);
         });
         command_queue.push_back(game.make_move(*it));

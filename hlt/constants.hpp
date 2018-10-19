@@ -35,5 +35,7 @@ namespace hlt {
         extern double INSPIRED_BONUS_MULTIPLIER;
         /** An inspired ship instead spends 1/X% halite to move. */
         extern int INSPIRED_MOVE_COST_RATIO;
+
+        extern int HALITE_CUTOFF;
     }
 }

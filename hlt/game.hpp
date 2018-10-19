@@ -14,7 +14,6 @@ namespace hlt {
         std::vector<std::shared_ptr<Player>> players;
         std::shared_ptr<Player> me;
         std::unique_ptr<GameMap> game_map;
-        char collision[505][65][65];
 
         Game();
         void ready(const std::string& name);
@@ -22,6 +21,7 @@ namespace hlt {
         bool end_turn(const std::vector<Command>& commands);
 
         bool should_return(std::shared_ptr<Ship> ship) const;
+        int closest_dropoff(Position p) const;
 
         int compute_move(std::shared_ptr<Ship> ship);
         int compute_explore(std::shared_ptr<Ship> ship);

@@ -21,6 +21,7 @@ namespace hlt {
         int INSPIRED_EXTRACT_RATIO;
         double INSPIRED_BONUS_MULTIPLIER;
         int INSPIRED_MOVE_COST_RATIO;
+        int HALITE_CUTOFF;
     }
 }
 
@@ -108,4 +109,5 @@ void hlt::constants::populate_constants(const std::string& string_from_engine) {
     INSPIRED_EXTRACT_RATIO = get_int(constants_map, "INSPIRED_EXTRACT_RATIO");
     INSPIRED_BONUS_MULTIPLIER = get_double(constants_map, "INSPIRED_BONUS_MULTIPLIER");
     INSPIRED_MOVE_COST_RATIO = get_int(constants_map, "INSPIRED_MOVE_COST_RATIO");
+    HALITE_CUTOFF = MAX_HALITE / 20;
 }
