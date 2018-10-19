@@ -6,8 +6,9 @@ namespace hlt {
     typedef int EntityId;
 
     enum Task {
+        kNone,
         kExploring,
-        kReturning
+        kReturning,
     };
 }
 

@@ -4,6 +4,7 @@
 #include "position.hpp"
 #include "ship.hpp"
 #include "dropoff.hpp"
+#include "constants.hpp"
 
 namespace hlt {
     struct MapCell {
@@ -35,6 +36,10 @@ namespace hlt {
 
         void mark_unsafe(std::shared_ptr<Ship>& ship) {
             this->ship = ship;
+        }
+
+        Halite halite_cost() const {
+            return halite / constants::MOVE_COST_RATIO;
         }
     };
 }
