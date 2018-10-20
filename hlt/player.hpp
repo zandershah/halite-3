@@ -5,8 +5,7 @@
 #include "ship.hpp"
 #include "dropoff.hpp"
 
-#include <memory>
-#include <unordered_map>
+#include <bits/stdc++.h>
 
 namespace hlt {
     struct Player {

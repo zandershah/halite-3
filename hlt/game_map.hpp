@@ -3,7 +3,7 @@
 #include "types.hpp"
 #include "map_cell.hpp"
 
-#include <vector>
+#include <bits/stdc++.h>
 
 namespace hlt {
     struct GameMap {
@@ -99,7 +99,8 @@ namespace hlt {
                     return d;
                 }
             }
-            assert(false);
+
+            return Direction::STILL;
         }
 
         Direction navigate(std::shared_ptr<Ship> ship, const Position& destination) {

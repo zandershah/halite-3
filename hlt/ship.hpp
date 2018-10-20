@@ -4,7 +4,7 @@
 #include "constants.hpp"
 #include "command.hpp"
 
-#include <memory>
+#include <bits/stdc++.h>
 
 namespace hlt {
     struct Ship : Entity {

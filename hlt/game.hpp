@@ -4,8 +4,7 @@
 #include "player.hpp"
 #include "types.hpp"
 
-#include <vector>
-#include <iostream>
+#include <bits/stdc++.h>
 
 namespace hlt {
     struct Game {

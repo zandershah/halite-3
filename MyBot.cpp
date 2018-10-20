@@ -69,11 +69,15 @@ int main(int argc, char* argv[]) {
                 if (cost(ship, p) < cost(ship, ship->next))
                     ship->next = p;
             }
+            if (tasks[ship->id] == RETURN)
+                return -cost(ship, ship->next);
             return cost(ship, ship->next);
         };
 
         auto execute = [&](shared_ptr<Ship> ship) {
+#if 0
             log::log(ship->id, "WANTS TO GO", ship->position.x, ship->position.y, "->", ship->next.x, ship->next.y);
+#endif
             Direction d = game_map->naive_navigate(ship, ship->next);
             command_queue.push_back(ship->move(d));
         };
@@ -83,13 +87,19 @@ int main(int argc, char* argv[]) {
             shared_ptr<Ship> ship = ship_iterator.second;
             EntityId id = ship->id;
 
+            int closest_dropoff = game_map->calculate_distance(ship->position, me->shipyard->position);
+            for (auto& it : me->dropoffs)
+                closest_dropoff = min(closest_dropoff,
+                        game_map->calculate_distance(ship->position, it.second->position));
+
             if (!tasks.count(id))
                 tasks[id] = EXPLORE;
             if (tasks[id] == RETURN && ship->position == me->shipyard->position)
                 tasks[id] = EXPLORE;
             if (tasks[id] == EXPLORE && ship->halite > constants::MAX_HALITE * 0.95)
                 tasks[id] = RETURN;
-            if (tasks[id] == EXPLORE && game.turn_number >= constants::MAX_TURNS * 0.8)
+            if (tasks[id] == EXPLORE &&
+                    game.turn_number + closest_dropoff + (int) me->ships.size() / 4 >= constants::MAX_TURNS)
                 tasks[id] = RETURN;
 
             if (stuck(ship)) {
@@ -104,7 +114,7 @@ int main(int argc, char* argv[]) {
             shared_ptr<Ship> ship;
 
             for (auto& it : ships) {
-                it.second = evaluate(it.first);
+                if (!it.second) it.second = evaluate(it.first);
                 if (!ship || it.second < ships[ship])
                     ship = it.first;
             }
@@ -118,11 +128,13 @@ int main(int argc, char* argv[]) {
             command_queue.push_back(me->shipyard->spawn());
         }
 
+#if 0
         for (auto& it : me->ships) {
             log::log(it.second->id, tasks[it.second->id] == EXPLORE ? "EXPLORE" : "RETURN");
         }
         for (Command c : command_queue)
             log::log(c);
+#endif
 
         if (!game.end_turn(command_queue)) {
             break;
