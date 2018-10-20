@@ -46,7 +46,7 @@ void hlt::Game::update_frame() {
             auto ship = ship_iterator.second;
             // TODO: Fix.
             if (ship->owner != my_id &&
-                    game_map->calculate_distance(ship->position, me->shipyard->position) > game_map->width / 2)
+                    game_map->calculate_distance(ship->position, me->shipyard->position))
                 game_map->at(ship)->mark_unsafe(ship);
         }
 
