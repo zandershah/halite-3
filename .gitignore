@@ -41,7 +41,6 @@ CTestTestfile.cmake
 *.out
 *.app
 
-MyBot*
 halite
 replays/*
 *.log
