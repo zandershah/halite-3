@@ -4,14 +4,13 @@
 #include "position.hpp"
 #include "ship.hpp"
 #include "dropoff.hpp"
-#include "constants.hpp"
 
 namespace hlt {
     struct MapCell {
         Position position;
         Halite halite;
         std::shared_ptr<Ship> ship;
-        std::shared_ptr<Entity> structure;
+        std::shared_ptr<Entity> structure; // only has dropoffs and shipyards; if id is -1, then it's a shipyard, otherwise it's a dropoff
 
         MapCell(int x, int y, Halite halite) :
             position(x, y),
@@ -30,16 +29,8 @@ namespace hlt {
             return static_cast<bool>(structure);
         }
 
-        void mark_safe() {
-            this->ship = nullptr;
-        }
-
         void mark_unsafe(std::shared_ptr<Ship>& ship) {
             this->ship = ship;
-        }
-
-        Halite halite_cost() const {
-            return halite / constants::MOVE_COST_RATIO;
         }
     };
 }

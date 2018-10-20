@@ -5,19 +5,15 @@
 #include "command.hpp"
 
 #include <memory>
-#include <vector>
 
 namespace hlt {
     struct Ship : Entity {
         Halite halite;
-        Task task;
         Position next;
 
         Ship(PlayerId player_id, EntityId ship_id, int x, int y, Halite halite) :
             Entity(player_id, ship_id, x, y),
-            halite(halite),
-            task(Task::kNone),
-            next(x, y)
+            halite(halite), next(x, y)
         {}
 
         bool is_full() const {
