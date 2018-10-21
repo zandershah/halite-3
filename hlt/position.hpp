@@ -7,8 +7,7 @@
 
 namespace hlt {
     struct Position {
-        int x;
-        int y;
+        int x, y;
 
         Position(int x, int y) : x(x), y(y) {}
 
@@ -48,6 +47,10 @@ namespace hlt {
             }};
         }
     };
+
+    static bool operator<(Position u, Position v) {
+        return u.x == v.x ? u.y < v.y : u.x < v.x;
+    }
 
     static std::ostream& operator<<(std::ostream& out, const Position& position) {
         out << position.x << ' ' << position.y;

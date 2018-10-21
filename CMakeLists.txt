@@ -19,10 +19,6 @@ foreach(dir ${dirs})
 endforeach()
 
 include_directories(${CMAKE_SOURCE_DIR})
-set(SOURCE_FILES "${SOURCE_FILES}" MyBot.cpp)
+set(SOURCE_FILES "${SOURCE_FILES}" MyBot.cpp ZanZanBot.cpp)
 
 add_executable(MyBot ${SOURCE_FILES})
-
-if(MINGW)
-    target_link_libraries(MyBot -static)
-endif()
