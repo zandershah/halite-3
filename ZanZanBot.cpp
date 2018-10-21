@@ -43,6 +43,9 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
             return numeric_limits<double>::max();
 
         Halite halite_gain_estimate = game_map->at(p)->halite;
+        for (Position pp : p.get_surrounding_cardinals()) {
+            halite_gain_estimate += game_map->at(pp)->halite / 5;
+        }
         double turn_estimate = game_map->calculate_distance(ship->position, p);
         Halite halite_cost_estimate = dist[p.x][p.y];
 
@@ -56,7 +59,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         if (halite_cost_estimate >= halite_gain_estimate)
             return numeric_limits<double>::max();
 
-        return (5000.0 - halite_gain_estimate + halite_cost_estimate) * sqrt(max(5.0, turn_estimate));
+        return (6000.0 - halite_gain_estimate + halite_cost_estimate) * sqrt(max(5.0, turn_estimate));
     };
 
     for (Position p : positions) {
