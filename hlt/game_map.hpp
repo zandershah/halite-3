@@ -77,33 +77,31 @@ namespace hlt {
             return possible_moves;
         }
 
-        Direction naive_navigate(std::shared_ptr<Ship> ship, const Position& destination) {
+        Direction naive_navigate(std::shared_ptr<Ship> ship, const Position& destination, Task task) {
             // get_unsafe_moves normalizes for us
             for (Direction direction : get_unsafe_moves(ship->position, destination)) {
                 Position target_pos = ship->position.directional_offset(direction);
                 if (!at(target_pos)->is_occupied()) {
-                    at(target_pos)->mark_unsafe(ship);
+                    if (task != HARD_RETURN || target_pos != destination)
+                        at(target_pos)->mark_unsafe(ship);
                     return direction;
                 }
             }
 
             if (!at(ship)->is_occupied()) {
-                at(ship)->mark_unsafe(ship);
+                if (task != HARD_RETURN || ship->position != destination)
+                    at(ship)->mark_unsafe(ship);
                 return Direction::STILL;
             }
 
             for (Direction d : ALL_CARDINALS) {
                 Position target_pos = ship->position.directional_offset(d);
                 if (!at(target_pos)->is_occupied()) {
-                    at(target_pos)->mark_unsafe(ship);
+                    if (task != HARD_RETURN || target_pos != destination)
+                        at(target_pos)->mark_unsafe(ship);
                     return d;
                 }
             }
-
-            return Direction::STILL;
-        }
-
-        Direction navigate(std::shared_ptr<Ship> ship, const Position& destination) {
 
             return Direction::STILL;
         }

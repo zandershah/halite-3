@@ -28,7 +28,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
     }
 
     vector<Position> positions;
-    if (tasks[ship->id] == RETURN) {
+    if (tasks[ship->id] & (RETURN | HARD_RETURN)) {
         ship->next = game.me->shipyard->position;
         for (auto& it : game.me->dropoffs)
             positions.push_back(it.second->position);
@@ -48,7 +48,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
 
         double turn_estimate = game_map->calculate_distance(ship->position, p);
 
-        if (tasks[ship->id] == RETURN) return turn_estimate / 1000.0;
+        if (tasks[ship->id] & (RETURN | HARD_RETURN)) return turn_estimate;
 
         Halite halite_gain_estimate = game_map->at(p)->halite;
         for (Position pp : p.get_surrounding_cardinals()) {
@@ -73,7 +73,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         if (cost(ship, p) < cost(ship, ship->next))
             ship->next = p;
     }
-    if (tasks[ship->id] == RETURN)
+    if (tasks[ship->id] & (RETURN | HARD_RETURN))
         return -cost(ship, ship->next);
     return cost(ship, ship->next);
 }
@@ -99,7 +99,7 @@ void ZanZanBot::run() {
 #if 0
             log::log(ship->id, "WANTS TO GO", ship->position.x, ship->position.y, "->", ship->next.x, ship->next.y);
 #endif
-            Direction d = game_map->naive_navigate(ship, ship->next);
+            Direction d = game_map->naive_navigate(ship, ship->next, tasks[ship->id]);
             command_queue.push_back(ship->move(d));
         };
 
@@ -121,8 +121,8 @@ void ZanZanBot::run() {
             if (tasks[id] == EXPLORE && ship->halite > constants::MAX_HALITE * 0.95)
                 tasks[id] = RETURN;
             if (tasks[id] == EXPLORE &&
-                    game.turn_number + closest_dropoff + (int) me->ships.size() * 0.225 >= constants::MAX_TURNS)
-                tasks[id] = RETURN;
+                    game.turn_number + closest_dropoff + (int) me->ships.size() * 0.3 >= constants::MAX_TURNS)
+                tasks[id] = HARD_RETURN;
 
             // Dropoff.
             {
