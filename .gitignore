@@ -45,3 +45,4 @@ halite
 replays/*
 *.log
 submit.zip
+*.swp

@@ -39,14 +39,21 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
     }
 
     auto cost = [&](shared_ptr<Ship> ship, Position p) {
-        if (tasks[ship->id] == EXPLORE && p == game.me->shipyard->position)
+        bool on_dropoff = p == game.me->shipyard->position;
+        for (auto& it : game.me->dropoffs)
+            on_dropoff |= p == it.second->position;
+
+        if (tasks[ship->id] == EXPLORE && on_dropoff)
             return numeric_limits<double>::max();
+
+        double turn_estimate = game_map->calculate_distance(ship->position, p);
+
+        if (tasks[ship->id] == RETURN) return turn_estimate / 1000.0;
 
         Halite halite_gain_estimate = game_map->at(p)->halite;
         for (Position pp : p.get_surrounding_cardinals()) {
             halite_gain_estimate += game_map->at(pp)->halite / 5;
         }
-        double turn_estimate = game_map->calculate_distance(ship->position, p);
         Halite halite_cost_estimate = dist[p.x][p.y];
 
 #if 0
@@ -56,7 +63,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         // turn_estimate += sqrt(back_distance);
 #endif
 
-        if (halite_cost_estimate >= halite_gain_estimate)
+        if (halite_cost_estimate >= halite_gain_estimate || 6000.0 <= halite_gain_estimate - halite_cost_estimate)
             return numeric_limits<double>::max();
 
         return (6000.0 - halite_gain_estimate + halite_cost_estimate) * sqrt(max(5.0, turn_estimate));
@@ -77,22 +84,15 @@ void ZanZanBot::run() {
         shared_ptr<Player> me = game.me;
         unique_ptr<GameMap>& game_map = game.game_map;
 
-        vector<Halite> flat_halite;
-        flat_halite.reserve(game_map->height * game_map->width);
-        for (vector<MapCell> &cells : game_map->cells) {
-            for (MapCell cell : cells) {
-                halite[cell.position.x][cell.position.y] = cell.halite;
-                flat_halite.push_back(cell.halite);
-            }
-        }
-        sort(flat_halite.begin(), flat_halite.end());
-        Halite q3 = flat_halite[flat_halite.size() * 3 / 4];
+        for (vector<MapCell> &cells : game_map->cells)
+        for (MapCell cell : cells)
+            halite[cell.position.x][cell.position.y] = cell.halite;
 
         unordered_map<shared_ptr<Ship>, double> ships;
         vector<Command> command_queue;
         auto stuck = [&](shared_ptr<Ship> ship) {
             return ship->halite < game_map->at(ship)->halite / constants::MOVE_COST_RATIO ||
-                (!ship->is_full() && game_map->at(ship)->halite >= q3);
+                (!ship->is_full() && game_map->at(ship)->halite >= constants::MAX_HALITE * 0.1);
         };
 
         auto execute = [&](shared_ptr<Ship> ship) {
@@ -116,13 +116,47 @@ void ZanZanBot::run() {
             if (!tasks.count(id))
                 tasks[id] = EXPLORE;
 
-            if (tasks[id] == RETURN && ship->position == me->shipyard->position)
+            if (tasks[id] == RETURN && closest_dropoff == 0)
                 tasks[id] = EXPLORE;
             if (tasks[id] == EXPLORE && ship->halite > constants::MAX_HALITE * 0.95)
                 tasks[id] = RETURN;
             if (tasks[id] == EXPLORE &&
-                    game.turn_number + closest_dropoff + (int) me->ships.size() / 4 >= constants::MAX_TURNS)
+                    game.turn_number + closest_dropoff + (int) me->ships.size() * 0.225 >= constants::MAX_TURNS)
                 tasks[id] = RETURN;
+
+            // Dropoff.
+            {
+                Halite halite_around = 0;
+                for (vector<MapCell> &cells : game_map->cells) {
+                    for (MapCell cell : cells) {
+                        if (game_map->calculate_distance(ship->position, cell.position) <= game_map->width / 16)
+                            halite_around += cell.halite;
+                    }
+                }
+
+                int local_ships = 0;
+                for (auto& it : me->ships) {
+                    if (game_map->calculate_distance(ship->position, it.second->position) <= 5)
+                        ++local_ships;
+                }
+                bool local_dropoffs = game_map->calculate_distance(ship->position, me->shipyard->position) <= game_map->width * 0.25;
+                for (auto& it : me->dropoffs) {
+                    if (game_map->calculate_distance(ship->position, it.second->position) <= game_map->width * 0.5)
+                        local_dropoffs = true;
+                }
+
+                if (game_map->at(ship)->halite >= constants::MAX_HALITE * 0.65 &&
+                        halite_around >= constants::MAX_HALITE * game_map->width / 8 &&
+                        game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST * 1.25 &&
+                        local_ships >= 3 && !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.66 &&
+                        me->dropoffs.size() < 2) {
+                    command_queue.push_back(ship->make_dropoff());
+                    me->dropoffs[-ship->id] = std::make_shared<Dropoff>(game.my_id, -ship->id, ship->position.x, ship->position.y);
+                    log::log("DROPOFF!");
+                    continue;
+                }
+            }
+
 
             if (stuck(ship)) {
                 command_queue.push_back(ship->stay_still());

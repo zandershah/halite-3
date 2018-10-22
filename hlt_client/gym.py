@@ -215,7 +215,6 @@ def get_rank_history(conn, bot_id):
 
 def main(args):
     if args.gym_mode == BOTS_MODE:
-
         def _prettyprint_bot(bot):
             return "\n".join([
                 'Bot "{}" (ID {}, version {})'.format(bot['name'], bot['id'], bot['version']),
