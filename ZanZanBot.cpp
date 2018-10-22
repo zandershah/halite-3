@@ -146,7 +146,7 @@ void ZanZanBot::run() {
                 }
 
                 if (game_map->at(ship)->halite >= constants::MAX_HALITE * 0.65 &&
-                        halite_around >= constants::MAX_HALITE * game_map->width / 8 &&
+                        halite_around >= constants::MAX_HALITE * game_map->width / 10 &&
                         game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST * 1.25 &&
                         local_ships >= 3 && !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.66 &&
                         me->dropoffs.size() < 2) {
