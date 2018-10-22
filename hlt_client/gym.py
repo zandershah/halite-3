@@ -288,7 +288,7 @@ def main(args):
     elif args.gym_mode == EVALUATE_MODE:
         hlt_path = args.halite_binary
         output_dir = args.game_output_dir
-        map_dimensions = [(32, 32), (48, 48), (64, 64), (80, 80)]
+        map_dimensions = [(32, 32), (40, 40), (48, 48), (56, 56), (64, 64)]
         iterations = args.iterations
 
         run_matches(args.db_path, hlt_path, output_dir, map_dimensions, iterations)
