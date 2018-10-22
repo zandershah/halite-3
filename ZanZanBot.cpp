@@ -77,15 +77,22 @@ void ZanZanBot::run() {
         shared_ptr<Player> me = game.me;
         unique_ptr<GameMap>& game_map = game.game_map;
 
-        for (vector<MapCell> &cells : game_map->cells)
-        for (MapCell cell : cells)
-            halite[cell.position.x][cell.position.y] = cell.halite;
+        vector<Halite> flat_halite;
+        flat_halite.reserve(game_map->height * game_map->width);
+        for (vector<MapCell> &cells : game_map->cells) {
+            for (MapCell cell : cells) {
+                halite[cell.position.x][cell.position.y] = cell.halite;
+                flat_halite.push_back(cell.halite);
+            }
+        }
+        sort(flat_halite.begin(), flat_halite.end());
+        Halite q3 = flat_halite[flat_halite.size() * 3 / 4];
 
         unordered_map<shared_ptr<Ship>, double> ships;
         vector<Command> command_queue;
         auto stuck = [&](shared_ptr<Ship> ship) {
             return ship->halite < game_map->at(ship)->halite / constants::MOVE_COST_RATIO ||
-                (!ship->is_full() && game_map->at(ship)->halite >= constants::MAX_HALITE * 0.25);
+                (!ship->is_full() && game_map->at(ship)->halite >= q3);
         };
 
         auto execute = [&](shared_ptr<Ship> ship) {
