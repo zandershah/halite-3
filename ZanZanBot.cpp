@@ -102,7 +102,7 @@ void ZanZanBot::run() {
         vector<Command> command_queue;
         auto stuck = [&](shared_ptr<Ship> ship) {
             return ship->halite < game_map->at(ship)->halite / constants::MOVE_COST_RATIO ||
-                (!ship->is_full() && game_map->at(ship)->halite >= constants::MAX_HALITE * 0.1);
+                (!ship->is_full() && game_map->at(ship)->halite >= q3);
         };
 
         auto execute = [&](shared_ptr<Ship> ship) {
