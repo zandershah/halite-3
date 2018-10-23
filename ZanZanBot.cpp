@@ -84,9 +84,19 @@ void ZanZanBot::run() {
         shared_ptr<Player> me = game.me;
         unique_ptr<GameMap>& game_map = game.game_map;
 
-        for (vector<MapCell> &cells : game_map->cells)
-        for (MapCell cell : cells)
-            halite[cell.position.x][cell.position.y] = cell.halite;
+        Halite q3;
+        {
+            vector<Halite> flat_halite;
+            flat_halite.reserve(game_map->height * game_map->width);
+            for (vector<MapCell> &cells : game_map->cells) {
+                for (MapCell cell : cells) {
+                    halite[cell.position.x][cell.position.y] = cell.halite;
+                    flat_halite.push_back(cell.halite);
+                }
+            }
+            sort(flat_halite.begin(), flat_halite.end());
+            q3 = flat_halite[flat_halite.size() * 3 / 4];
+        }
 
         unordered_map<shared_ptr<Ship>, double> ships;
         vector<Command> command_queue;
@@ -129,7 +139,7 @@ void ZanZanBot::run() {
                 Halite halite_around = 0;
                 for (vector<MapCell> &cells : game_map->cells) {
                     for (MapCell cell : cells) {
-                        if (game_map->calculate_distance(ship->position, cell.position) <= game_map->width / 16)
+                        if (game_map->calculate_distance(ship->position, cell.position) <= game_map->width * 0.1)
                             halite_around += cell.halite;
                     }
                 }
@@ -146,10 +156,11 @@ void ZanZanBot::run() {
                 }
 
                 if (game_map->at(ship)->halite >= constants::MAX_HALITE * 0.65 &&
-                        halite_around >= constants::MAX_HALITE * game_map->width / 10 &&
-                        game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST * 1.25 &&
+                        halite_around >= constants::MAX_HALITE * 2.5 * game.players.size() &&
+                        game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
                         local_ships >= 3 && !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.66 &&
                         me->dropoffs.size() < 2) {
+                    me->halite -= max(0, game_map->at(ship)->halite + ship->halite);
                     command_queue.push_back(ship->make_dropoff());
                     me->dropoffs[-ship->id] = std::make_shared<Dropoff>(game.my_id, -ship->id, ship->position.x, ship->position.y);
                     log::log("DROPOFF!");
