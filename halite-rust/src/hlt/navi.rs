@@ -1,4 +1,5 @@
 use hlt::direction::Direction;
+use hlt::log::Log;
 use hlt::position::Position;
 use hlt::ship::Ship;
 use hlt::ShipId;
@@ -12,10 +13,7 @@ pub struct Navi {
 
 impl Navi {
     pub fn new(width: usize, height: usize) -> Navi {
-        let mut occupied: Vec<Vec<Option<ShipId>>> = Vec::with_capacity(height);
-        for _ in 0..height {
-            occupied.push(vec![None; width]);
-        }
+        let occupied: Vec<Vec<Option<ShipId>>> = vec![vec![None; width]; height];
 
         Navi { width, height, occupied }
     }
@@ -26,7 +24,10 @@ impl Navi {
         for player in &game.players {
             for ship_id in &player.ship_ids {
                 let ship = &game.ships[ship_id];
-                self.mark_unsafe_ship(&ship);
+                // TODO: FIX.
+                if ship.owner != game.my_id {
+                    self.mark_unsafe_ship(&ship);
+                }
             }
         }
     }
@@ -102,6 +103,20 @@ impl Navi {
             }
         }
 
+        if self.is_safe(&ship.position) {
+            self.mark_unsafe(&ship.position, ship.id);
+            return Direction::Still;
+        }
+
+        for direction in Direction::get_all_cardinals() {
+            let target_pos = ship_position.directional_offset(direction);
+            if self.is_safe(&ship.position) {
+                self.mark_unsafe(&ship.position, ship.id);
+                return direction;
+            }
+        }
+
+        Log::log("STILL ERROR!");
         Direction::Still
     }
 

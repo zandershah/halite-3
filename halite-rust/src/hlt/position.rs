@@ -1,10 +1,25 @@
 use hlt::direction::Direction;
 
+use std::cmp::Ordering;
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Position {
     pub x: i32,
     pub y: i32,
 }
+
+impl Ord for Position {
+    fn cmp(&self, o: &Position) -> Ordering {
+        self.x.cmp(&o.x).then_with(|| self.y.cmp(&o.y))
+    }
+}
+
+impl PartialOrd for Position {
+    fn partial_cmp(&self, o: &Position) -> Option<Ordering> {
+        Some(self.cmp(o))
+    }
+}
+
 
 impl Position {
     pub fn directional_offset(&self, d: Direction) -> Position {
