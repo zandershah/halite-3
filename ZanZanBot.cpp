@@ -80,6 +80,8 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
 
 void ZanZanBot::run() {
     for (;;) {
+        chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
         game.update_frame();
         shared_ptr<Player> me = game.me;
         unique_ptr<GameMap>& game_map = game.game_map;
@@ -135,7 +137,7 @@ void ZanZanBot::run() {
                 tasks[id] = HARD_RETURN;
 
             // Dropoff.
-            {
+            if (0) {
                 Halite halite_around = 0;
                 for (vector<MapCell> &cells : game_map->cells) {
                     for (MapCell cell : cells) {
@@ -202,6 +204,8 @@ void ZanZanBot::run() {
         for (Command c : command_queue)
             log::log(c);
 #endif
+        chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+        log::log("Millis: ", chrono::duration_cast<chrono::milliseconds>(end - begin).count());
 
         if (!game.end_turn(command_queue)) {
             break;
