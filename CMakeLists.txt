@@ -19,6 +19,6 @@ foreach(dir ${dirs})
 endforeach()
 
 include_directories(${CMAKE_SOURCE_DIR})
-set(SOURCE_FILES "${SOURCE_FILES}" MyBot.cpp ZanZanBot.cpp)
+set(SOURCE_FILES "${SOURCE_FILES}" MyBot.cpp)
 
 add_executable(MyBot ${SOURCE_FILES})
