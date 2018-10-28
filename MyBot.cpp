@@ -59,36 +59,40 @@ int main(int argc, char* argv[]) {
         }
 
         vector<Position> positions;
-        if (tasks[ship->id] & (RETURN | HARD_RETURN)) {
+
+        switch (tasks[ship->id]) {
+        case EXPLORE:
+            for (vector<MapCell> &cells : game_map->cells) for (MapCell& cell : cells) {
+                if (cell.value_estimate >= cell.cost_estimate)
+                    positions.push_back(cell.position);
+            }
+            break;
+        case RETURN:
+        case HARD_RETURN:
             ship->next = game.me->shipyard->position;
             for (auto& it : game.me->dropoffs)
                 positions.push_back(it.second->position);
-        } else if (tasks[ship->id] == EXPLORE) {
-            for (vector<MapCell> &cells : game_map->cells) for (MapCell& cell : cells)
-                positions.push_back(cell.position);
+            break;
         }
 
         auto cost = [&](shared_ptr<Ship> ship, Position p) {
-            bool on_dropoff = game_map->at(p)->return_estimate == 0;
+            MapCell* map_cell = game_map->at(p);
 
+            bool on_dropoff = map_cell->return_estimate == 0;
             if (tasks[ship->id] == EXPLORE && on_dropoff)
-                return numeric_limits<double>::max();
+                return numeric_limits<double>::min();
 
-            double turn_estimate = game_map->calculate_distance(ship->position, p);
+            double turn_estimate = game_map->calculate_distance(ship->position, p) + map_cell->return_estimate;
 
-            if (tasks[ship->id] & (RETURN | HARD_RETURN)) return turn_estimate;
+            if (tasks[ship->id] & (RETURN | HARD_RETURN)) return -turn_estimate;
 
-            Halite halite_gain_estimate = game_map->at(p)->value_estimate;
-            Halite halite_cost_estimate = dist[p.x][p.y];
+            Halite halite_cost_estimate = dist[p.x][p.y] + map_cell->cost_estimate;
 
-            if (halite_cost_estimate >= halite_gain_estimate || 6000.0 <= halite_gain_estimate - halite_cost_estimate)
-                return numeric_limits<double>::max();
-
-            return (6000.0 - halite_gain_estimate + halite_cost_estimate) * sqrt(max(5.0, turn_estimate));
+            return (map_cell->value_estimate - halite_cost_estimate) / pow(max(5.0, turn_estimate), 0.5);
         };
 
         for (Position p : positions) {
-            if (!game.game_map->at(p)->is_occupied() && cost(ship, p) < cost(ship, ship->next))
+            if (!game.game_map->at(p)->is_occupied() && cost(ship, ship->next) < cost(ship, p))
                 ship->next = p;
         }
         if (tasks[ship->id] & (RETURN | HARD_RETURN))
@@ -192,7 +196,7 @@ int main(int argc, char* argv[]) {
 
             for (auto& it : ships) {
                 // double f = evaluate(game, it);
-                if (!ship || it.second < ships[ship])
+                if (!ship || ships[ship] < it.second)
                     ship = it.first;
             }
 
