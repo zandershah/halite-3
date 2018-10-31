@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
     unordered_map<EntityId, vector<vector<Halite>>> dijkstras;
 
     unordered_map<EntityId, int> last_seen;
-    double ewma = 0.0;
+    double ewma_return = 0.0;
 
     auto return_estimate = [&](Position p) {
         pair<int, Position> estimate(game.game_map->calculate_distance(game.me->shipyard->position, p),
@@ -171,8 +171,8 @@ int main(int argc, char* argv[]) {
                 if (game_map->at(it.second)->return_estimate) continue;
 
                 if (last_seen[it.second->id] && game.turn_number - last_seen[it.second->id] > 2) {
-                    ewma = (game.turn_number - last_seen[it.second->id] - ewma) * 2 / 7 + ewma;
-                    log::log("RETURNED", game.turn_number - last_seen[it.second->id], "EWMA", ewma);
+                    ewma_return = (game.turn_number - last_seen[it.second->id] - ewma_return) * 2 / 7 + ewma_return;
+                    log::log("Returned:", game.turn_number - last_seen[it.second->id], "EWMA Return Trip:", ewma_return);
                 }
 
                 last_seen[it.second->id] = game.turn_number;
@@ -216,11 +216,11 @@ int main(int argc, char* argv[]) {
                             halite_around += cell.halite;
                     }
 
-                    bool local_dropoffs = game_map->at(ship->position)->return_estimate <= game_map->width / 4;
+                    bool local_dropoffs = game_map->at(ship->position)->return_estimate <= 8;
 
-                    if (halite_around >= constants::MAX_HALITE * 8 &&
+                    if (halite_around >= constants::MAX_HALITE * 12 &&
                             game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
-                            !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.66) {
+                            !local_dropoffs && game.turn_number + 6 * ewma_return <= constants::MAX_TURNS) {
                         me->halite -= max(0, constants::DROPOFF_COST - game_map->at(ship)->halite - ship->halite);
                         command_queue.push_back(ship->make_dropoff());
                         log::log("DROPOFF!");
@@ -263,7 +263,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (game.turn_number + ewma * 3 <= constants::MAX_TURNS && me->halite >= constants::SHIP_COST &&
+        if (game.turn_number + ewma_return * 3 <= constants::MAX_TURNS && me->halite >= constants::SHIP_COST &&
                 !game_map->at(me->shipyard)->is_occupied()) {
             command_queue.push_back(me->shipyard->spawn());
         }

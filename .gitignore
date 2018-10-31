@@ -41,7 +41,7 @@ CTestTestfile.cmake
 *.out
 *.app
 
-*/halite
+./halite
 replays/*
 *.log
 submit.zip
