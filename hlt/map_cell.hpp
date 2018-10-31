@@ -15,9 +15,9 @@ namespace hlt {
         std::shared_ptr<Entity> structure;
 
         // Estimates for getting back to the nearest base.
-        Halite cost_estimate;
-        int return_estimate;
-        Halite value_estimate;
+        Halite cost_estimate = 0;
+        int return_estimate = 0;
+        Halite value_estimate = 0;
 
         MapCell(int x, int y, Halite halite) :
             position(x, y),

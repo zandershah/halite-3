@@ -171,7 +171,7 @@ int main(int argc, char* argv[]) {
                 if (game_map->at(it.second)->return_estimate) continue;
 
                 if (last_seen[it.second->id] && game.turn_number - last_seen[it.second->id] > 2) {
-                    ewma = (game.turn_number - last_seen[it.second->id] - ewma) * 2 / 5 + ewma;
+                    ewma = (game.turn_number - last_seen[it.second->id] - ewma) * 2 / 7 + ewma;
                     log::log("RETURNED", game.turn_number - last_seen[it.second->id], "EWMA", ewma);
                 }
 
@@ -218,7 +218,7 @@ int main(int argc, char* argv[]) {
 
                     bool local_dropoffs = game_map->at(ship->position)->return_estimate <= game_map->width / 4;
 
-                    if (halite_around >= constants::MAX_HALITE * 16 &&
+                    if (halite_around >= constants::MAX_HALITE * 8 &&
                             game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
                             !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.66) {
                         me->halite -= max(0, constants::DROPOFF_COST - game_map->at(ship)->halite - ship->halite);
