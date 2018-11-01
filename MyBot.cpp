@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
             for (vector<MapCell> &cells : game_map->cells) for (MapCell cell : cells)
                 flat_halite.push_back(cell.halite);
             sort(flat_halite.begin(), flat_halite.end());
-            q3 = flat_halite[flat_halite.size() * 3 / 4];
+            q3 = flat_halite[flat_halite.size() * 2 / 4];
         }
 
         unordered_map<shared_ptr<Ship>, double> ships;
