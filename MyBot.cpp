@@ -20,7 +20,6 @@ int main(int argc, char* argv[]) {
     unordered_map<EntityId, vector<vector<Halite>>> dijkstras;
 
     unordered_map<EntityId, int> last_seen;
-    double ewma_return = 0.0;
 
     auto return_estimate = [&](Position p) {
         pair<int, Position> estimate(game.game_map->calculate_distance(game.me->shipyard->position, p),
@@ -56,7 +55,7 @@ int main(int argc, char* argv[]) {
                     pq.pop();
                     for (Position pp : p.get_surrounding_cardinals()) {
                         pp = game_map->normalize(pp);
-                        Halite move_cost = game_map->at(p)->halite;
+                        Halite move_cost = game_map->at(p)->halite / constants::MOVE_COST_RATIO;
                         if (dist[p.x][p.y] + move_cost < dist[pp.x][pp.y]) {
                             dist[pp.x][pp.y] = dist[p.x][p.y] + move_cost;
                             pq.emplace(-dist[pp.x][pp.y], pp);
@@ -87,28 +86,24 @@ int main(int argc, char* argv[]) {
             MapCell* map_cell = game_map->at(p);
 
             bool on_dropoff = map_cell->return_estimate == 0;
-            if (tasks[ship->id] == EXPLORE && on_dropoff)
-                return numeric_limits<double>::max();
+            if (tasks[ship->id] == EXPLORE && (on_dropoff || map_cell->halite == 0))
+                return numeric_limits<double>::min();
 
-            double turn_estimate = game_map->calculate_distance(ship->position, p);
+            double turn_estimate = game_map->calculate_distance(ship->position, p) + map_cell->return_estimate;
 
-            if (tasks[ship->id] & (RETURN | HARD_RETURN)) return turn_estimate;
+            if (tasks[ship->id] & (RETURN | HARD_RETURN)) return -turn_estimate;
 
-            Halite halite_cost_estimate = dist[p.x][p.y];
+            Halite halite_cost_estimate = dist[p.x][p.y] + map_cell->cost_estimate;
 
-            if (halite_cost_estimate >= map_cell->value_estimate ||
-                    6000.0 <= map_cell->value_estimate - halite_cost_estimate)
-                return numeric_limits<double>::max();
-
-            return (6000.0 - map_cell->value_estimate + halite_cost_estimate) * sqrt(max(5.0, turn_estimate));
+            return (map_cell->value_estimate - halite_cost_estimate) / pow(max(5.0, turn_estimate), 1);
         };
 
         for (Position p : positions) {
-            if (!game.game_map->at(p)->is_occupied() && cost(ship, p) < cost(ship, ship->next))
+            if (!game.game_map->at(p)->is_occupied() && cost(ship, ship->next) < cost(ship, p))
                 ship->next = p;
         }
         if (tasks[ship->id] & (RETURN | HARD_RETURN))
-            return -cost(ship, ship->next);
+            return (game_map->width + cost(ship, ship->next)) * 1e3;
         return cost(ship, ship->next);
     };
 
@@ -166,17 +161,6 @@ int main(int argc, char* argv[]) {
                 flat_halite.push_back(cell.halite);
             sort(flat_halite.begin(), flat_halite.end());
             q3 = flat_halite[flat_halite.size() * 3 / 4];
-
-            for (auto it : me->ships) {
-                if (game_map->at(it.second)->return_estimate) continue;
-
-                if (last_seen[it.second->id] && game.turn_number - last_seen[it.second->id] > 2) {
-                    ewma_return = (game.turn_number - last_seen[it.second->id] - ewma_return) * 2 / 7 + ewma_return;
-                    log::log("Returned:", game.turn_number - last_seen[it.second->id], "EWMA Return Trip:", ewma_return);
-                }
-
-                last_seen[it.second->id] = game.turn_number;
-            }
         }
 
         unordered_map<shared_ptr<Ship>, double> ships;
@@ -199,7 +183,7 @@ int main(int argc, char* argv[]) {
                         tasks[id] = EXPLORE;
                     break;
                 case EXPLORE:
-                    if (game.turn_number + closest_dropoff + (int) me->ships.size() * 3 / 10 >= constants::MAX_TURNS)
+                    if (game.turn_number + closest_dropoff + me->ships.size() * 0.3 >= constants::MAX_TURNS)
                         tasks[id] = HARD_RETURN;
                     else if (ship->halite > constants::MAX_HALITE * 0.95)
                         tasks[id] = RETURN;
@@ -212,15 +196,15 @@ int main(int argc, char* argv[]) {
                 {
                     Halite halite_around = 0;
                     for (vector<MapCell> &cells : game_map->cells) for (MapCell cell : cells) {
-                        if (game_map->calculate_distance(ship->position, cell.position) <= 4)
+                        if (game_map->calculate_distance(ship->position, cell.position) <= game_map->width / 8)
                             halite_around += cell.halite;
                     }
 
-                    bool local_dropoffs = game_map->at(ship->position)->return_estimate <= 8;
+                    bool local_dropoffs = game_map->at(ship->position)->return_estimate <= game_map->width / 3;
 
-                    if (halite_around >= constants::MAX_HALITE * 12 &&
+                    if (halite_around >= constants::MAX_HALITE * game_map->width / 4 &&
                             game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
-                            !local_dropoffs && game.turn_number + 6 * ewma_return <= constants::MAX_TURNS) {
+                            !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.666) {
                         me->halite -= max(0, constants::DROPOFF_COST - game_map->at(ship)->halite - ship->halite);
                         command_queue.push_back(ship->make_dropoff());
                         log::log("DROPOFF!");
@@ -242,16 +226,19 @@ int main(int argc, char* argv[]) {
             shared_ptr<Ship> ship;
 
             for (auto& it : ships) {
-                if (!ship || it.second < ships[ship])
+                if (!ship || ships[ship] < it.second)
                     ship = it.first;
             }
 
-            // Update estimates.
-            const Halite delta_halite = game_map->at(ship->next)->halite;
-            game_map->at(ship->next)->value_estimate -= delta_halite;
-            for (Position p : ship->next.get_surrounding_cardinals())
-                game_map->at(p)->value_estimate -= delta_halite / HALITE_FALLOFF;
+            // Update.
+            {
+                const Halite delta_halite = game_map->at(ship->next)->halite;
+                game_map->at(ship->next)->value_estimate -= delta_halite;
+                for (Position p : ship->next.get_surrounding_cardinals())
+                    game_map->at(p)->value_estimate -= delta_halite / HALITE_FALLOFF;
+            }
 
+            // Execute.
             Direction d = game_map->naive_navigate(ship, ship->next, tasks[ship->id]);
             command_queue.push_back(ship->move(d));
             ships.erase(ship);
@@ -263,8 +250,8 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (game.turn_number + ewma_return * 3 <= constants::MAX_TURNS && me->halite >= constants::SHIP_COST &&
-                !game_map->at(me->shipyard)->is_occupied()) {
+        if (me->halite >= constants::SHIP_COST && !game_map->at(me->shipyard)->is_occupied()
+                && game.turn_number <= constants::MAX_TURNS * 0.5) {
             command_queue.push_back(me->shipyard->spawn());
         }
 
