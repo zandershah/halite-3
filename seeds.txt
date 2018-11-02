@@ -1,0 +1,19 @@
+4 player (64x64):
+
+    - High halite, seed 2958019
+    - Low halite, seed 194586
+
+4 player (32x32):
+
+    - High halite, seed 5919537
+    - Low halite, seed 963146
+
+2 player (64x64):
+
+    - High halite, seed 519110
+    - Low halite, seed 660435
+
+2 player (32x32):
+
+    - High halite, seed 588996
+    - Low halite, seed 4015015

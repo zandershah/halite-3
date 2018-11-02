@@ -18,5 +18,16 @@ namespace hlt {
         void ready(const std::string& name);
         void update_frame();
         bool end_turn(const std::vector<Command>& commands);
+
+        std::pair<int, hlt::Position> return_estimate(Position p) {
+            std::pair<int, hlt::Position> estimate(
+                    game_map->calculate_distance(me->shipyard->position, p),
+                    me->shipyard->position);
+            for (auto& it : me->dropoffs) {
+                int e = game_map->calculate_distance(it.second->position, p);
+                if (e < estimate.first) estimate = std::make_pair(e, it.second->position);
+            }
+            return estimate;
+        }
     };
 }

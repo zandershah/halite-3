@@ -21,15 +21,6 @@ int main(int argc, char* argv[]) {
 
     unordered_map<EntityId, int> last_seen;
 
-    auto return_estimate = [&](Position p) {
-        pair<int, Position> estimate(game.game_map->calculate_distance(game.me->shipyard->position, p),
-                game.me->shipyard->position);
-        for (auto& it : game.me->dropoffs) {
-            int e = game.game_map->calculate_distance(it.second->position, p);
-            if (e < estimate.first) estimate = make_pair(e, it.second->position);
-        }
-        return estimate;
-    };
     auto stuck = [&](shared_ptr<Ship> ship) {
         return ship->halite < game.game_map->at(ship)->halite / constants::MOVE_COST_RATIO ||
             (!ship->is_full() && game.game_map->at(ship)->halite >= q3);
@@ -148,7 +139,7 @@ int main(int argc, char* argv[]) {
             for (auto& cells : game_map->cells) for (auto& cell : cells) {
                 cell.value_estimate = surrounding_halite(cell.position);
                 cell.cost_estimate = dist[cell.position.x][cell.position.y];
-                cell.return_estimate = return_estimate(cell.position).first;
+                cell.return_estimate = game.return_estimate(cell.position).first;
             }
         }
 
