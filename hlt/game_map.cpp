@@ -18,6 +18,8 @@ void hlt::GameMap::_update() {
         hlt::get_sstream() >> x >> y >> halite;
         cells[y][x].halite = halite;
     }
+
+    vis.clear();
 }
 
 std::unique_ptr<hlt::GameMap> hlt::GameMap::_generate() {

@@ -4,4 +4,4 @@ set -e
 
 cmake .
 make
-./halite --replay-directory replays/ -vvv --seed ${1:-$RANDOM} "./MyBot" "./MyBot_Div1"
+./halite --replay-directory replays/ -vvv --seed ${1:-$RANDOM} "./MyBot" "./MyBot_Nov1Aggro"

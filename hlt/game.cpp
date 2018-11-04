@@ -46,8 +46,10 @@ void hlt::Game::update_frame() {
             auto ship = ship_iterator.second;
             if (ship->owner == my_id) continue;
             int return_distance = return_estimate(ship->position).first;
-            if (players.size() == 4 && return_distance)
+            if (players.size() == 4 && return_distance) {
+                game_map->vis.insert(std::make_pair(ship->position, 0));
                 game_map->at(ship)->mark_unsafe(ship);
+            }
         }
 
         game_map->at(player->shipyard)->structure = player->shipyard;

@@ -10,6 +10,7 @@ namespace hlt {
         int width;
         int height;
         std::vector<std::vector<MapCell>> cells;
+        std::set<std::pair<Position, int>> vis;
 
         MapCell* at(const Position& position) {
             Position normalized = normalize(position);

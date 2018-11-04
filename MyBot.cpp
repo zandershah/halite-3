@@ -19,18 +19,31 @@ int main(int argc, char* argv[]) {
 
     unordered_map<EntityId, vector<vector<Halite>>> dijkstras;
 
-    unordered_map<EntityId, int> last_seen;
-
     auto stuck = [&](shared_ptr<Ship> ship) {
         return ship->halite < game.game_map->at(ship)->halite / constants::MOVE_COST_RATIO ||
             (!ship->is_full() && game.game_map->at(ship)->halite >= q3);
     };
+
+#if 0
+    auto inspired = [&](Position p) {
+        int close_enemies = 0;
+        for (auto& player : game.players) if (player->id != game.my_id) {
+            for (auto& it : player->ships) {
+                Position pp = it.second->position;
+                close_enemies += game.game_map->calculate_distance(p, pp) <= constants::INSPIRATION_RADIUS;
+            }
+        }
+        return close_enemies >= constants::INSPIRATION_SHIP_COUNT;
+    };
+#endif
+
     auto surrounding_halite = [&](Position p) {
-        Halite ret = game.game_map->at(p)->halite;
+        Halite ret = game.game_map->at(p)->halite; //  * (inspired(p) ? constants::INSPIRED_BONUS_MULTIPLIER : 1);
         for (Position pp : p.get_surrounding_cardinals())
-            ret += game.game_map->at(pp)->halite / HALITE_FALLOFF;
+            ret += game.game_map->at(pp)->halite / HALITE_FALLOFF; // * (inspired(pp) ? constants::INSPIRED_BONUS_MULTIPLIER : 1);
         return ret;
     };
+
     auto evaluate = [&](std::shared_ptr<hlt::Ship> ship) {
         unique_ptr<GameMap>& game_map = game.game_map;
 
@@ -98,6 +111,11 @@ int main(int argc, char* argv[]) {
         return cost(ship, ship->next);
     };
 
+#if 0
+    auto hill_climb = [&](Position start, Position end) {
+    };
+#endif
+
     for (;;) {
         chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
@@ -159,6 +177,10 @@ int main(int argc, char* argv[]) {
 
         // Update tasks for each ship.
         {
+            double return_cutoff = 0.95;
+            if (game.turn_number <= constants::MAX_TURNS * 0.5)
+                return_cutoff = 0.75;
+
             for (auto& it : me->ships) {
                 shared_ptr<Ship> ship = it.second;
                 EntityId id = ship->id;
@@ -176,7 +198,7 @@ int main(int argc, char* argv[]) {
                 case EXPLORE:
                     if (game.turn_number + closest_dropoff + me->ships.size() * 0.3 >= constants::MAX_TURNS)
                         tasks[id] = HARD_RETURN;
-                    else if (ship->halite > constants::MAX_HALITE * 0.95)
+                    else if (ship->halite > constants::MAX_HALITE * return_cutoff)
                         tasks[id] = RETURN;
                     break;
                 default:
@@ -191,13 +213,16 @@ int main(int argc, char* argv[]) {
                             halite_around += cell.halite;
                     }
 
-                    bool local_dropoffs = game_map->at(ship->position)->return_estimate <= game_map->width / 3;
+                    bool local_dropoffs = game.return_estimate(ship->position).first <= game_map->width / 3;
 
-                    if (halite_around >= constants::MAX_HALITE * game_map->width / 4 &&
-                            game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
-                            !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.666) {
-                        me->halite -= max(0, constants::DROPOFF_COST - game_map->at(ship)->halite - ship->halite);
+                    bool ideal_dropoff = halite_around >= constants::MAX_HALITE * game_map->width / 4 &&
+                        game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
+                        !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.666;
+
+                    if (ideal_dropoff || game_map->at(ship)->halite + ship->halite >= constants::DROPOFF_COST) {
+                        me->halite += game_map->at(ship)->halite + ship->halite - constants::DROPOFF_COST;
                         command_queue.push_back(ship->make_dropoff());
+                        game.me->dropoffs[-ship->id] = make_shared<Dropoff>(game.my_id, -ship->id, ship->position.x, ship->position.y);
                         log::log("DROPOFF!");
                         continue;
                     }
