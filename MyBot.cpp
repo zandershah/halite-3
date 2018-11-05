@@ -97,9 +97,8 @@ int main(int argc, char* argv[]) {
 
             if (tasks[ship->id] & (RETURN | HARD_RETURN)) return -turn_estimate;
 
-            Halite halite_cost_estimate = dist[p.x][p.y] + map_cell->cost_estimate;
-
-            return (map_cell->value_estimate - halite_cost_estimate) / pow(max(5.0, turn_estimate), 1);
+            Halite halite_profit_estimate = map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
+            return halite_profit_estimate / max(1.0, turn_estimate);
         };
 
         for (Position p : positions) {
@@ -178,7 +177,7 @@ int main(int argc, char* argv[]) {
         // Update tasks for each ship.
         {
             double return_cutoff = 0.95;
-            if (game.turn_number <= constants::MAX_TURNS * 0.5)
+            if (game.turn_number <= constants::MAX_TURNS * 0.75)
                 return_cutoff = 0.75;
 
             for (auto& it : me->ships) {
