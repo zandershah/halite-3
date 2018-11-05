@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
         };
 
         for (Position p : positions) {
-            if (!game.game_map->at(p)->is_occupied() && cost(ship, ship->next) < cost(ship, p))
+            if (!game.game_map->is_vis(p) && cost(ship, ship->next) < cost(ship, p))
                 ship->next = p;
         }
         if (tasks[ship->id] & (RETURN | HARD_RETURN))
@@ -230,6 +230,7 @@ int main(int argc, char* argv[]) {
                 if (stuck(ship)) {
                     command_queue.push_back(ship->stay_still());
                     game_map->at(ship)->mark_unsafe(ship);
+                    game_map->mark_vis(ship->position);
                 } else {
                     ships[ship] = evaluate(ship);
                 }
@@ -265,7 +266,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (me->halite >= constants::SHIP_COST && !game_map->at(me->shipyard)->is_occupied()
+        if (me->halite >= constants::SHIP_COST && !game_map->is_vis(me->shipyard->position)
                 && game.turn_number <= constants::MAX_TURNS * 0.5) {
             command_queue.push_back(me->shipyard->spawn());
         }

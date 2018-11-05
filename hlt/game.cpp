@@ -47,8 +47,8 @@ void hlt::Game::update_frame() {
             if (ship->owner == my_id) continue;
             int return_distance = return_estimate(ship->position).first;
             if (players.size() == 4 && return_distance) {
-                game_map->vis.insert(std::make_pair(ship->position, 0));
                 game_map->at(ship)->mark_unsafe(ship);
+                game_map->mark_vis(ship->position);
             }
         }
 

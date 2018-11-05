@@ -29,6 +29,13 @@ namespace hlt {
             return at(entity->position);
         }
 
+        void mark_vis(const Position& p, int t = 0) {
+            vis.emplace(normalize(p), t);
+        }
+        bool is_vis(const Position& p, int t = 0) {
+            return vis.find(std::make_pair(normalize(p), t)) != vis.end();
+        }
+
         int calculate_distance(const Position& source, const Position& target) {
             const auto& normalized_source = normalize(source);
             const auto& normalized_target = normalize(target);
@@ -82,24 +89,30 @@ namespace hlt {
             // get_unsafe_moves normalizes for us
             for (Direction direction : get_unsafe_moves(ship->position, destination)) {
                 Position target_pos = ship->position.directional_offset(direction);
-                if (!at(target_pos)->is_occupied()) {
-                    if (task != HARD_RETURN || target_pos != destination)
+                if (!is_vis(target_pos)) {
+                    if (task != HARD_RETURN || target_pos != destination) {
                         at(target_pos)->mark_unsafe(ship);
+                        mark_vis(target_pos);
+                    }
                     return direction;
                 }
             }
 
-            if (!at(ship)->is_occupied()) {
-                if (task != HARD_RETURN || ship->position != destination)
+            if (!is_vis(ship->position)) {
+                if (task != HARD_RETURN || ship->position != destination) {
                     at(ship)->mark_unsafe(ship);
+                    mark_vis(ship->position);
+                }
                 return Direction::STILL;
             }
 
             for (Direction d : ALL_CARDINALS) {
                 Position target_pos = ship->position.directional_offset(d);
-                if (!at(target_pos)->is_occupied()) {
-                    if (task != HARD_RETURN || target_pos != destination)
+                if (!is_vis(target_pos)) {
+                    if (task != HARD_RETURN || target_pos != destination) {
                         at(target_pos)->mark_unsafe(ship);
+                        mark_vis(target_pos);
+                    }
                     return d;
                 }
             }
