@@ -277,8 +277,12 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        size_t ship_count = numeric_limits<size_t>::max();
+        for (auto& player : game.players) if (player->id != game.my_id) {
+            ship_count = min(ship_count, player->ships.size());
+        }
         if (me->halite >= constants::SHIP_COST && !game_map->is_vis(me->shipyard->position, 1)
-                && game.turn_number <= constants::MAX_TURNS * 0.5) {
+                && (game.turn_number <= constants::MAX_TURNS * 0.5 || ship_count < me->ships.size())) {
             command_queue.push_back(me->shipyard->spawn());
         }
 
