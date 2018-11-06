@@ -29,10 +29,10 @@ namespace hlt {
             return at(entity->position);
         }
 
-        void mark_vis(const Position& p, int t = 0) {
+        void mark_vis(const Position& p, int t) {
             vis.emplace(normalize(p), t);
         }
-        bool is_vis(const Position& p, int t = 0) {
+        bool is_vis(const Position& p, int t) {
             return vis.find(std::make_pair(normalize(p), t)) != vis.end();
         }
 
@@ -85,33 +85,36 @@ namespace hlt {
             return possible_moves;
         }
 
-        Direction naive_navigate(std::shared_ptr<Ship> ship, const Position& destination, Task task) {
+        Direction navigate_return(std::shared_ptr<Ship> ship, Task task);
+
+        Direction naive_navigate(std::shared_ptr<Ship> ship, Task task) {
+            const Position& destination = ship->next;
             // get_unsafe_moves normalizes for us
             for (Direction direction : get_unsafe_moves(ship->position, destination)) {
                 Position target_pos = ship->position.directional_offset(direction);
-                if (!is_vis(target_pos)) {
+                if (!is_vis(target_pos, 1)) {
                     if (task != HARD_RETURN || target_pos != destination) {
                         at(target_pos)->mark_unsafe(ship);
-                        mark_vis(target_pos);
+                        mark_vis(target_pos, 1);
                     }
                     return direction;
                 }
             }
 
-            if (!is_vis(ship->position)) {
+            if (!is_vis(ship->position, 1)) {
                 if (task != HARD_RETURN || ship->position != destination) {
                     at(ship)->mark_unsafe(ship);
-                    mark_vis(ship->position);
+                    mark_vis(ship->position, 1);
                 }
                 return Direction::STILL;
             }
 
             for (Direction d : ALL_CARDINALS) {
                 Position target_pos = ship->position.directional_offset(d);
-                if (!is_vis(target_pos)) {
+                if (!is_vis(target_pos, 1)) {
                     if (task != HARD_RETURN || target_pos != destination) {
                         at(target_pos)->mark_unsafe(ship);
-                        mark_vis(target_pos);
+                        mark_vis(target_pos, 1);
                     }
                     return d;
                 }

@@ -48,7 +48,9 @@ void hlt::Game::update_frame() {
             int return_distance = return_estimate(ship->position).first;
             if (players.size() == 4 && return_distance) {
                 game_map->at(ship)->mark_unsafe(ship);
-                game_map->mark_vis(ship->position);
+                game_map->mark_vis(ship->position, 1);
+                for (Position p : ship->position.get_surrounding_cardinals())
+                    game_map->mark_vis(p, 1);
             }
         }
 

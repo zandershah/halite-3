@@ -8,7 +8,7 @@ using namespace hlt;
 const int HALITE_FALLOFF = 5;
 
 int main(int argc, char* argv[]) {
-    hlt::Game game;
+    Game game;
     // At this point "game" variable is populated with initial map data.
     // This is a good place to do computationally expensive start-up pre-processing.
     // As soon as you call "ready" function below, the 2 second per turn timer will start.
@@ -57,9 +57,9 @@ int main(int argc, char* argv[]) {
                 while (!pq.empty()) {
                     Position p = pq.top().second;
                     pq.pop();
+                    const Halite move_cost = game_map->at(p)->halite / constants::MOVE_COST_RATIO;
                     for (Position pp : p.get_surrounding_cardinals()) {
                         pp = game_map->normalize(pp);
-                        Halite move_cost = game_map->at(p)->halite / constants::MOVE_COST_RATIO;
                         if (dist[p.x][p.y] + move_cost < dist[pp.x][pp.y]) {
                             dist[pp.x][pp.y] = dist[p.x][p.y] + move_cost;
                             pq.emplace(-dist[pp.x][pp.y], pp);
@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
         };
 
         for (Position p : positions) {
-            if (!game.game_map->is_vis(p) && cost(ship, ship->next) < cost(ship, p))
+            if (cost(ship, ship->next) < cost(ship, p))
                 ship->next = p;
         }
         if (tasks[ship->id] & (RETURN | HARD_RETURN))
@@ -177,7 +177,7 @@ int main(int argc, char* argv[]) {
         // Update tasks for each ship.
         {
             double return_cutoff = 0.95;
-            if (game.turn_number <= constants::MAX_TURNS * 0.75)
+            if (game.turn_number <= constants::MAX_TURNS * 0.25)
                 return_cutoff = 0.75;
 
             for (auto& it : me->ships) {
@@ -189,18 +189,20 @@ int main(int argc, char* argv[]) {
                 // New ship.
                 if (!tasks.count(id)) tasks[id] = EXPLORE;
 
+                // TODO: Dry run of return.
+                if (game.turn_number + closest_dropoff + me->ships.size() * 0.35 >= constants::MAX_TURNS)
+                    tasks[id] = HARD_RETURN;
+
                 switch (tasks[id]) {
+                case EXPLORE:
+                    if (ship->halite > constants::MAX_HALITE * return_cutoff)
+                        tasks[id] = RETURN;
+                    break;
                 case RETURN:
                     if (closest_dropoff == 0)
                         tasks[id] = EXPLORE;
                     break;
-                case EXPLORE:
-                    if (game.turn_number + closest_dropoff + me->ships.size() * 0.3 >= constants::MAX_TURNS)
-                        tasks[id] = HARD_RETURN;
-                    else if (ship->halite > constants::MAX_HALITE * return_cutoff)
-                        tasks[id] = RETURN;
-                    break;
-                default:
+                case HARD_RETURN:
                     break;
                 }
 
@@ -230,7 +232,7 @@ int main(int argc, char* argv[]) {
                 if (stuck(ship)) {
                     command_queue.push_back(ship->stay_still());
                     game_map->at(ship)->mark_unsafe(ship);
-                    game_map->mark_vis(ship->position);
+                    game_map->mark_vis(ship->position, 1);
                 } else {
                     ships[ship] = evaluate(ship);
                 }
@@ -255,7 +257,16 @@ int main(int argc, char* argv[]) {
             }
 
             // Execute.
-            Direction d = game_map->naive_navigate(ship, ship->next, tasks[ship->id]);
+            Direction d = Direction::STILL;
+            switch (tasks[ship->id]) {
+            case EXPLORE:
+                d = game_map->naive_navigate(ship, tasks[ship->id]);
+                break;
+            case RETURN:
+            case HARD_RETURN:
+                d = game_map->navigate_return(ship, tasks[ship->id]);
+                break;
+            }
             command_queue.push_back(ship->move(d));
             ships.erase(ship);
 
@@ -266,7 +277,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (me->halite >= constants::SHIP_COST && !game_map->is_vis(me->shipyard->position)
+        if (me->halite >= constants::SHIP_COST && !game_map->is_vis(me->shipyard->position, 1)
                 && game.turn_number <= constants::MAX_TURNS * 0.5) {
             command_queue.push_back(me->shipyard->spawn());
         }
