@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
 
         switch (tasks[ship->id]) {
         case EXPLORE:
-            for (vector<MapCell> &cells : game_map->cells) for (MapCell& cell : cells)
+            for (vector<MapCell>& cells : game_map->cells) for (MapCell& cell : cells)
                 positions.push_back(cell.position);
             break;
         case RETURN:
@@ -177,7 +177,7 @@ int main(int argc, char* argv[]) {
         // Update tasks for each ship.
         {
             double return_cutoff = 0.95;
-            if (game.turn_number <= constants::MAX_TURNS * 0.25)
+            if (game.turn_number <= constants::MAX_TURNS * 0.75)
                 return_cutoff = 0.75;
 
             for (auto& it : me->ships) {
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
                 if (!tasks.count(id)) tasks[id] = EXPLORE;
 
                 // TODO: Dry run of return.
-                if (game.turn_number + closest_dropoff + me->ships.size() * 0.35 >= constants::MAX_TURNS)
+                if (game.turn_number + closest_dropoff + me->ships.size() * 0.3 >= constants::MAX_TURNS)
                     tasks[id] = HARD_RETURN;
 
                 switch (tasks[id]) {
@@ -218,7 +218,7 @@ int main(int argc, char* argv[]) {
 
                     bool ideal_dropoff = halite_around >= constants::MAX_HALITE * game_map->width / 4 &&
                         game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
-                        !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.666;
+                        !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.75;
 
                     if (ideal_dropoff || game_map->at(ship)->halite + ship->halite >= constants::DROPOFF_COST) {
                         me->halite += game_map->at(ship)->halite + ship->halite - constants::DROPOFF_COST;
@@ -277,10 +277,11 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        size_t ship_count = numeric_limits<size_t>::max();
-        for (auto& player : game.players) if (player->id != game.my_id) {
-            ship_count = min(ship_count, player->ships.size());
-        }
+        size_t ship_count = 0;
+        for (auto& player : game.players) if (player->id != game.my_id)
+            ship_count += player->ships.size();
+        ship_count /= game.players.size() - 1;
+
         if (me->halite >= constants::SHIP_COST && !game_map->is_vis(me->shipyard->position, 1)
                 && (game.turn_number <= constants::MAX_TURNS * 0.5 || me->ships.size() < ship_count)) {
             command_queue.push_back(me->shipyard->spawn());
