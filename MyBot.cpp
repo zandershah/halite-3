@@ -26,15 +26,17 @@ int main(int argc, char* argv[]) {
     };
 
     unordered_map<int, unordered_map<int, double>> spawn_factor;
+
     spawn_factor[32][2] = 0.5;
-    spawn_factor[32][4] = 0.33;
     spawn_factor[40][2] = 0.5;
-    spawn_factor[40][4] = 0.33;
     spawn_factor[48][2] = 0.5;
-    spawn_factor[48][4] = 0.5;
     spawn_factor[56][2] = 0.5;
+    spawn_factor[64][2] = 0.675;
+
+    spawn_factor[32][4] = 0.25;
+    spawn_factor[40][4] = 0.375;
+    spawn_factor[48][4] = 0.5;
     spawn_factor[56][4] = 0.5;
-    spawn_factor[64][2] = 0.5;
     spawn_factor[64][4] = 0.5;
 
 #if 0
@@ -292,7 +294,7 @@ int main(int argc, char* argv[]) {
 
         size_t ship_count = 0;
         // TODO: Smarter counter of mid-game aggression.
-        if (game.players.size() == 2) {
+        if (game.players.size() == 2 && game.turn_number <= MAX_TURNS * 0.95) {
           for (auto& player : game.players) if (player->id != game.my_id)
               ship_count = player->ships.size();
         }
