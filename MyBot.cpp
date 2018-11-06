@@ -17,7 +17,6 @@ int main(int argc, char* argv[]) {
 
     unordered_map<EntityId, Task> tasks;
     Halite q3;
-    const double spawn_factor = game.players.size() == 2 ? 0.5 : 0.333;
 
     unordered_map<EntityId, vector<vector<Halite>>> dijkstras;
 
@@ -26,19 +25,17 @@ int main(int argc, char* argv[]) {
             (!ship->is_full() && game.game_map->at(ship)->halite >= q3);
     };
 
-#if 0
-    unordered_map<int, unordered_map<int, int>> spawn_factor;
-    spawn_factor[32][2] =
-    spawn_factor[32][4] =
-    spawn_factor[40][2] =
-    spawn_factor[40][4] =
-    spawn_factor[48][2] =
-    spawn_factor[48][4] =
-    spawn_factor[56][2] =
-    spawn_factor[56][4] =
-    spawn_factor[64][2] =
-    spawn_factor[64][4] =
-#endif
+    unordered_map<int, unordered_map<int, double>> spawn_factor;
+    spawn_factor[32][2] = 0.5;
+    spawn_factor[32][4] = 0.33;
+    spawn_factor[40][2] = 0.5;
+    spawn_factor[40][4] = 0.33;
+    spawn_factor[48][2] = 0.5;
+    spawn_factor[48][4] = 0.5;
+    spawn_factor[56][2] = 0.5;
+    spawn_factor[56][4] = 0.5;
+    spawn_factor[64][2] = 0.5;
+    spawn_factor[64][4] = 0.5;
 
 #if 0
     auto inspired = [&](Position p) {
@@ -234,7 +231,7 @@ int main(int argc, char* argv[]) {
 
                     bool ideal_dropoff = halite_around >= MAX_HALITE * game_map->width / 4 &&
                         game_map->at(ship)->halite + ship->halite + me->halite >= DROPOFF_COST &&
-                        !local_dropoffs && game.turn_number <= MAX_TURNS * 0.75;
+                        !local_dropoffs && game.turn_number <= MAX_TURNS * 0.666;
 
                     if (ideal_dropoff || game_map->at(ship)->halite + ship->halite >= DROPOFF_COST) {
                         me->halite += game_map->at(ship)->halite + ship->halite - DROPOFF_COST;
@@ -245,7 +242,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
-                if (stuck(ship)) {
+                if (stuck(ship) && tasks[ship->id] != HARD_RETURN) {
                     command_queue.push_back(ship->stay_still());
                     game_map->at(ship)->mark_unsafe(ship);
                     game_map->mark_vis(ship->position, 1);
@@ -294,11 +291,14 @@ int main(int argc, char* argv[]) {
         }
 
         size_t ship_count = numeric_limits<size_t>::max();
-        for (auto& player : game.players) if (player->id != game.my_id)
-            ship_count = min(ship_count, player->ships.size());
+        // TODO: Smarter counter of mid-game aggression.
+        if (game.players.size() == 2) {
+          for (auto& player : game.players) if (player->id != game.my_id)
+              ship_count = min(ship_count, player->ships.size());
+        }
 
         if (me->halite >= SHIP_COST && !game_map->is_vis(me->shipyard->position, 1)
-                && (game.turn_number <= MAX_TURNS * spawn_factor || me->ships.size() < ship_count)) {
+                && (game.turn_number <= MAX_TURNS * spawn_factor[game_map->width][game.players.size()] || me->ships.size() < ship_count)) {
             command_queue.push_back(me->shipyard->spawn());
         }
 
