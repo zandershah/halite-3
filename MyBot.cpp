@@ -290,11 +290,11 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        size_t ship_count = numeric_limits<size_t>::max();
+        size_t ship_count = 0;
         // TODO: Smarter counter of mid-game aggression.
         if (game.players.size() == 2) {
           for (auto& player : game.players) if (player->id != game.my_id)
-              ship_count = min(ship_count, player->ships.size());
+              ship_count = player->ships.size();
         }
 
         if (me->halite >= SHIP_COST && !game_map->is_vis(me->shipyard->position, 1)
