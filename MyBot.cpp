@@ -4,6 +4,7 @@
 
 using namespace std;
 using namespace hlt;
+using namespace constants;
 
 const int HALITE_FALLOFF = 5;
 
@@ -16,13 +17,28 @@ int main(int argc, char* argv[]) {
 
     unordered_map<EntityId, Task> tasks;
     Halite q3;
+    const double spawn_factor = game.players.size() == 2 ? 0.5 : 0.333;
 
     unordered_map<EntityId, vector<vector<Halite>>> dijkstras;
 
     auto stuck = [&](shared_ptr<Ship> ship) {
-        return ship->halite < game.game_map->at(ship)->halite / constants::MOVE_COST_RATIO ||
+        return ship->halite < game.game_map->at(ship)->halite / MOVE_COST_RATIO ||
             (!ship->is_full() && game.game_map->at(ship)->halite >= q3);
     };
+
+#if 0
+    unordered_map<int, unordered_map<int, int>> spawn_factor;
+    spawn_factor[32][2] =
+    spawn_factor[32][4] =
+    spawn_factor[40][2] =
+    spawn_factor[40][4] =
+    spawn_factor[48][2] =
+    spawn_factor[48][4] =
+    spawn_factor[56][2] =
+    spawn_factor[56][4] =
+    spawn_factor[64][2] =
+    spawn_factor[64][4] =
+#endif
 
 #if 0
     auto inspired = [&](Position p) {
@@ -57,7 +73,7 @@ int main(int argc, char* argv[]) {
                 while (!pq.empty()) {
                     Position p = pq.top().second;
                     pq.pop();
-                    const Halite move_cost = game_map->at(p)->halite / constants::MOVE_COST_RATIO;
+                    const Halite move_cost = game_map->at(p)->halite / MOVE_COST_RATIO;
                     for (Position pp : p.get_surrounding_cardinals()) {
                         pp = game_map->normalize(pp);
                         if (dist[p.x][p.y] + move_cost < dist[pp.x][pp.y]) {
@@ -145,7 +161,7 @@ int main(int argc, char* argv[]) {
                 for (Position pp : p.get_surrounding_cardinals()) {
                     pp = game_map->normalize(pp);
 
-                    const Halite move_cost = game_map->at(pp)->halite / constants::MOVE_COST_RATIO;
+                    const Halite move_cost = game_map->at(pp)->halite / MOVE_COST_RATIO;
                     if (dist[p.x][p.y] + move_cost < dist[pp.x][pp.y]) {
                         dist[pp.x][pp.y] = dist[p.x][p.y] + move_cost;
                         pq.emplace(-dist[pp.x][pp.y], pp);
@@ -177,7 +193,7 @@ int main(int argc, char* argv[]) {
         // Update tasks for each ship.
         {
             double return_cutoff = 0.95;
-            if (game.turn_number <= constants::MAX_TURNS * 0.75)
+            if (game.turn_number <= MAX_TURNS * 0.75)
                 return_cutoff = 0.75;
 
             for (auto& it : me->ships) {
@@ -190,12 +206,12 @@ int main(int argc, char* argv[]) {
                 if (!tasks.count(id)) tasks[id] = EXPLORE;
 
                 // TODO: Dry run of return.
-                if (game.turn_number + closest_dropoff + me->ships.size() * 0.3 >= constants::MAX_TURNS)
+                if (game.turn_number + closest_dropoff + me->ships.size() * 0.3 >= MAX_TURNS)
                     tasks[id] = HARD_RETURN;
 
                 switch (tasks[id]) {
                 case EXPLORE:
-                    if (ship->halite > constants::MAX_HALITE * return_cutoff)
+                    if (ship->halite > MAX_HALITE * return_cutoff)
                         tasks[id] = RETURN;
                     break;
                 case RETURN:
@@ -216,12 +232,12 @@ int main(int argc, char* argv[]) {
 
                     bool local_dropoffs = game.return_estimate(ship->position).first <= game_map->width / 3;
 
-                    bool ideal_dropoff = halite_around >= constants::MAX_HALITE * game_map->width / 4 &&
-                        game_map->at(ship)->halite + ship->halite + me->halite >= constants::DROPOFF_COST &&
-                        !local_dropoffs && game.turn_number <= constants::MAX_TURNS * 0.75;
+                    bool ideal_dropoff = halite_around >= MAX_HALITE * game_map->width / 4 &&
+                        game_map->at(ship)->halite + ship->halite + me->halite >= DROPOFF_COST &&
+                        !local_dropoffs && game.turn_number <= MAX_TURNS * 0.75;
 
-                    if (ideal_dropoff || game_map->at(ship)->halite + ship->halite >= constants::DROPOFF_COST) {
-                        me->halite += game_map->at(ship)->halite + ship->halite - constants::DROPOFF_COST;
+                    if (ideal_dropoff || game_map->at(ship)->halite + ship->halite >= DROPOFF_COST) {
+                        me->halite += game_map->at(ship)->halite + ship->halite - DROPOFF_COST;
                         command_queue.push_back(ship->make_dropoff());
                         game.me->dropoffs[-ship->id] = make_shared<Dropoff>(game.my_id, -ship->id, ship->position.x, ship->position.y);
                         log::log("DROPOFF!");
@@ -277,13 +293,12 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        size_t ship_count = 0;
+        size_t ship_count = numeric_limits<size_t>::max();
         for (auto& player : game.players) if (player->id != game.my_id)
-            ship_count += player->ships.size();
-        ship_count /= game.players.size() - 1;
+            ship_count = min(ship_count, player->ships.size());
 
-        if (me->halite >= constants::SHIP_COST && !game_map->is_vis(me->shipyard->position, 1)
-                && (game.turn_number <= constants::MAX_TURNS * 0.5 || me->ships.size() < ship_count)) {
+        if (me->halite >= SHIP_COST && !game_map->is_vis(me->shipyard->position, 1)
+                && (game.turn_number <= MAX_TURNS * spawn_factor || me->ships.size() < ship_count)) {
             command_queue.push_back(me->shipyard->spawn());
         }
 
