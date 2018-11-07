@@ -299,6 +299,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // TODO: Route all returns first.
         // Dispatch tasks.
         while (!ships.empty()) {
             shared_ptr<Ship> ship;

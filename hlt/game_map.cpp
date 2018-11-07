@@ -4,25 +4,29 @@
 using namespace std;
 using namespace hlt;
 
+namespace {
+
+struct State {
+    State() : t(numeric_limits<int>::max()), p(0, 0) {}
+    State(size_t tt, Halite hh, Position pp) : t(tt), h(hh), p(pp) {}
+    size_t t;
+    Halite h;
+    Position p;
+
+    bool operator<(State& s) const {
+        if (t == s.t) return h > s.h;
+        return t < s.t;
+    }
+};
+
+struct StateCompare {
+    // Reversed for priority_queue.
+    bool operator()(State& u, State& v) const { return v < u; }
+};
+
+}  // namespace
+
 Direction GameMap::navigate_return(shared_ptr<Ship> ship, Task task) {
-    struct State {
-        State() : t(numeric_limits<int>::max()), p(0, 0) {}
-        State(size_t tt, Halite hh, Position pp) : t(tt), h(hh), p(pp) {}
-        size_t t;
-        Halite h;
-        Position p;
-
-        bool operator<(State& s) const {
-            if (t == s.t) return h > s.h;
-            return t < s.t;
-        }
-    };
-
-    struct StateCompare {
-        // Reversed for priority_queue.
-        bool operator()(State& u, State& v) const { return v < u; }
-    };
-
     // Position represents last.
     vector<vector<State>> dp(height, vector<State>(width));
     // Position represents current.
