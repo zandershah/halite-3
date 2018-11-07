@@ -19,6 +19,7 @@ int main(int argc, char* argv[]) {
     Halite q3;
 
     unordered_map<EntityId, vector<vector<Halite>>> dijkstras;
+    unordered_map<Position, bool> inspired_cache;
 
     auto stuck = [&](shared_ptr<Ship> ship) {
         return ship->halite < game.game_map->at(ship)->halite / MOVE_COST_RATIO ||
@@ -27,19 +28,24 @@ int main(int argc, char* argv[]) {
 
     unordered_map<int, unordered_map<int, double>> spawn_factor;
 
-    spawn_factor[32][2] = 0.5;
-    spawn_factor[40][2] = 0.5;
-    spawn_factor[48][2] = 0.5;
-    spawn_factor[56][2] = 0.55;
-    spawn_factor[64][2] = 0.675;
+    {
+        spawn_factor[32][2] = 0.5;
+        spawn_factor[40][2] = 0.5;
+        spawn_factor[48][2] = 0.5;
+        spawn_factor[56][2] = 0.55;
+        spawn_factor[64][2] = 0.675;
 
-    spawn_factor[32][4] = 0.325;
-    spawn_factor[40][4] = 0.375;
-    spawn_factor[48][4] = 0.5;
-    spawn_factor[56][4] = 0.5;
-    spawn_factor[64][4] = 0.525;
+        spawn_factor[32][4] = 0.325;
+        spawn_factor[40][4] = 0.375;
+        spawn_factor[48][4] = 0.5;
+        spawn_factor[56][4] = 0.5;
+        spawn_factor[64][4] = 0.525;
+    }
 
     auto inspired = [&](Position p) {
+        p = game.game_map->normalize(p);
+        if (inspired_cache.find(p) != inspired_cache.end())
+            return inspired_cache[p];
         int close_enemies = 0;
         for (auto& player : game.players) if (player->id != game.my_id) {
             for (auto& it : player->ships) {
@@ -47,7 +53,7 @@ int main(int argc, char* argv[]) {
                 close_enemies += game.game_map->calculate_distance(p, pp) <= constants::INSPIRATION_RADIUS;
             }
         }
-        return close_enemies >= constants::INSPIRATION_SHIP_COUNT;
+        return inspired_cache[p] = close_enemies >= constants::INSPIRATION_SHIP_COUNT;
     };
 
     auto surrounding_halite = [&](Position p) {
@@ -141,6 +147,7 @@ int main(int argc, char* argv[]) {
         // Pre: Reset caches.
         {
             dijkstras.clear();
+            inspired_cache.clear();
         }
 
         // Pre: Estimates for each cell.
