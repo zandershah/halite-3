@@ -1,9 +1,9 @@
 #include "log.hpp"
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <vector>
-#include <chrono>
 
 static std::ofstream log_file;
 static std::vector<std::string> log_buffer;
@@ -15,8 +15,12 @@ void dump_buffer_at_exit() {
         return;
     }
 
-    auto now_in_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    std::string filename = "bot-unknown-" + std::to_string(now_in_nanos) + ".log";
+    auto now_in_nanos =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::high_resolution_clock::now().time_since_epoch())
+            .count();
+    std::string filename =
+        "bot-unknown-" + std::to_string(now_in_nanos) + ".log";
     std::ofstream file(filename, std::ios::trunc | std::ios::out);
     for (const std::string& message : log_buffer) {
         file << message << std::endl;
@@ -25,7 +29,8 @@ void dump_buffer_at_exit() {
 
 void hlt::log::open(int bot_id) {
     if (has_opened) {
-        hlt::log::log("Error: log: tried to open(" + std::to_string(bot_id) + ") but we have already opened before.");
+        hlt::log::log("Error: log: tried to open(" + std::to_string(bot_id) +
+                      ") but we have already opened before.");
         exit(1);
     }
 

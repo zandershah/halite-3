@@ -27,14 +27,16 @@ void hlt::Game::ready(const std::string& name) {
 
 void hlt::Game::update_frame() {
     hlt::get_sstream() >> turn_number;
-    log::log("=============== TURN " + std::to_string(turn_number) + " ================");
+    log::log("=============== TURN " + std::to_string(turn_number) +
+             " ================");
 
     for (size_t i = 0; i < players.size(); ++i) {
         PlayerId current_player_id;
         int num_ships;
         int num_dropoffs;
         Halite halite;
-        hlt::get_sstream() >> current_player_id >> num_ships >> num_dropoffs >> halite;
+        hlt::get_sstream() >> current_player_id >> num_ships >> num_dropoffs >>
+            halite;
 
         players[current_player_id]->_update(num_ships, num_dropoffs, halite);
     }
