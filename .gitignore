@@ -54,7 +54,7 @@ halite
 test_bots.sh
 run_game.sh
 *__pycache__*
-MyBot_*
+MyBot*
 replays/*
 *.log
 submit.zip

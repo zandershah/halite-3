@@ -30,16 +30,15 @@ int main(int argc, char* argv[]) {
     spawn_factor[32][2] = 0.5;
     spawn_factor[40][2] = 0.5;
     spawn_factor[48][2] = 0.5;
-    spawn_factor[56][2] = 0.5;
+    spawn_factor[56][2] = 0.55;
     spawn_factor[64][2] = 0.675;
 
-    spawn_factor[32][4] = 0.25;
+    spawn_factor[32][4] = 0.325;
     spawn_factor[40][4] = 0.375;
     spawn_factor[48][4] = 0.5;
     spawn_factor[56][4] = 0.5;
-    spawn_factor[64][4] = 0.5;
+    spawn_factor[64][4] = 0.525;
 
-#if 0
     auto inspired = [&](Position p) {
         int close_enemies = 0;
         for (auto& player : game.players) if (player->id != game.my_id) {
@@ -50,12 +49,11 @@ int main(int argc, char* argv[]) {
         }
         return close_enemies >= constants::INSPIRATION_SHIP_COUNT;
     };
-#endif
 
     auto surrounding_halite = [&](Position p) {
-        Halite ret = game.game_map->at(p)->halite; //  * (inspired(p) ? constants::INSPIRED_BONUS_MULTIPLIER : 1);
+        Halite ret = game.game_map->at(p)->halite;
         for (Position pp : p.get_surrounding_cardinals())
-            ret += game.game_map->at(pp)->halite / HALITE_FALLOFF; // * (inspired(pp) ? constants::INSPIRED_BONUS_MULTIPLIER : 1);
+            ret += game.game_map->at(pp)->halite / HALITE_FALLOFF;
         return ret;
     };
 
@@ -113,6 +111,9 @@ int main(int argc, char* argv[]) {
             if (tasks[ship->id] & (RETURN | HARD_RETURN)) return -turn_estimate;
 
             Halite halite_profit_estimate = map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
+            if (game_map->calculate_distance(ship->position, p) <= INSPIRATION_RADIUS && inspired(p))
+                halite_profit_estimate += INSPIRED_BONUS_MULTIPLIER * map_cell->value_estimate;
+
             return halite_profit_estimate / max(1.0, turn_estimate);
         };
 
