@@ -51,8 +51,6 @@ CTestTestfile.cmake
 **/*.rs.bk
 
 halite
-test_bots.sh
-run_game.sh
 *__pycache__*
 MyBot*
 replays/*
@@ -60,3 +58,4 @@ replays/*
 submit.zip
 
 fluorine/
+test_bots.sh
