@@ -17,10 +17,13 @@ struct MapCell {
 
     // Estimates for getting back to the nearest base.
     Halite cost_estimate = 0;
-    int return_estimate = 0;
+    std::pair<int, Position> return_estimate;
     Halite value_estimate = 0;
 
-    MapCell(int x, int y, Halite halite) : position(x, y), halite(halite) {}
+    MapCell(int x, int y, Halite halite)
+        : position(x, y),
+          halite(halite),
+          return_estimate(std::make_pair(0, Position(x, y))) {}
 
     bool is_empty() const { return !ship && !structure; }
 

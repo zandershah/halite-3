@@ -49,87 +49,70 @@ struct ZanZanBot {
         return ret;
     }
 
-    double evaluate(std::shared_ptr<hlt::Ship> ship) {
-        unique_ptr<GameMap>& game_map = game.game_map;
-
-        if (dijkstras[ship->id].empty()) {
-            vector<vector<Halite>> dist(
-                game_map->height,
-                vector<Halite>(game_map->width, numeric_limits<Halite>::max()));
-            dist[ship->position.x][ship->position.y] = 0;
-            {
-                priority_queue<pair<Halite, Position>> pq;
-                pq.emplace(0, ship->position);
-                while (!pq.empty()) {
-                    Position p = pq.top().second;
-                    pq.pop();
-                    const Halite move_cost =
-                        game_map->at(p)->halite / MOVE_COST_RATIO;
-                    for (Position pp : p.get_surrounding_cardinals()) {
-                        pp = game_map->normalize(pp);
-                        if (dist[p.x][p.y] + move_cost < dist[pp.x][pp.y]) {
-                            dist[pp.x][pp.y] = dist[p.x][p.y] + move_cost;
-                            pq.emplace(-dist[pp.x][pp.y], pp);
-                        }
-                    }
-                }
-            }
-            dijkstras[ship->id] = move(dist);
-        }
-        vector<vector<Halite>>& dist = dijkstras[ship->id];
-
-        vector<Position> positions;
-
-        switch (tasks[ship->id]) {
-            case EXPLORE:
-                for (vector<MapCell>& cells : game_map->cells)
-                    for (MapCell& cell : cells)
-                        positions.push_back(cell.position);
-                break;
-            case RETURN:
-            case HARD_RETURN:
-                ship->next = game.me->shipyard->position;
-                for (auto& it : game.me->dropoffs)
-                    positions.push_back(it.second->position);
-                break;
-        }
-
-        auto cost = [&](shared_ptr<Ship> ship, Position p) {
-            MapCell* map_cell = game_map->at(p);
-
-            bool on_dropoff = map_cell->return_estimate == 0;
-            if (tasks[ship->id] == EXPLORE &&
-                (on_dropoff || map_cell->halite == 0))
-                return numeric_limits<double>::min();
-
-            double turn_estimate =
-                game_map->calculate_distance(ship->position, p) +
-                map_cell->return_estimate;
-
-            if (tasks[ship->id] & (RETURN | HARD_RETURN)) return -turn_estimate;
-
-            Halite halite_profit_estimate = map_cell->value_estimate +
-                                            map_cell->cost_estimate -
-                                            dist[p.x][p.y];
-            if (game_map->calculate_distance(ship->position, p) <=
-                    INSPIRATION_RADIUS &&
-                inspired(p))
-                halite_profit_estimate +=
-                    INSPIRED_BONUS_MULTIPLIER * map_cell->value_estimate;
-
-            return halite_profit_estimate / max(1.0, turn_estimate);
-        };
-
-        for (Position p : positions) {
-            if (cost(ship, ship->next) < cost(ship, p)) ship->next = p;
-        }
-        if (tasks[ship->id] & (RETURN | HARD_RETURN))
-            return (game_map->width + cost(ship, ship->next)) * 1e3;
-        return cost(ship, ship->next);
-    }
+    double evaluate(shared_ptr<Ship> ship);
 
     bool run();
 };
+
+double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
+    unique_ptr<GameMap>& game_map = game.game_map;
+
+    if (dijkstras[ship->id].empty()) {
+        vector<vector<Halite>> dist(
+            game_map->height,
+            vector<Halite>(game_map->width, numeric_limits<Halite>::max()));
+        dist[ship->position.x][ship->position.y] = 0;
+        {
+            priority_queue<pair<Halite, Position>> pq;
+            pq.emplace(0, ship->position);
+            while (!pq.empty()) {
+                Position p = pq.top().second;
+                pq.pop();
+                const Halite move_cost =
+                    game_map->at(p)->halite / MOVE_COST_RATIO;
+                for (Position pp : p.get_surrounding_cardinals()) {
+                    pp = game_map->normalize(pp);
+                    if (dist[p.x][p.y] + move_cost < dist[pp.x][pp.y]) {
+                        dist[pp.x][pp.y] = dist[p.x][p.y] + move_cost;
+                        pq.emplace(-dist[pp.x][pp.y], pp);
+                    }
+                }
+            }
+        }
+        dijkstras[ship->id] = move(dist);
+    }
+    vector<vector<Halite>>& dist = dijkstras[ship->id];
+
+    vector<Position> positions;
+    for (vector<MapCell>& cells : game_map->cells)
+        for (MapCell& cell : cells) positions.push_back(cell.position);
+
+    auto cost = [&](shared_ptr<Ship> ship, Position p) {
+        MapCell* map_cell = game_map->at(p);
+
+        bool on_dropoff = map_cell->return_estimate.first == 0;
+        if (on_dropoff || map_cell->halite == 0)
+            return numeric_limits<double>::min();
+
+        double turn_estimate = game_map->calculate_distance(ship->position, p) +
+                               map_cell->return_estimate.first;
+
+        Halite halite_profit_estimate =
+            map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
+        if (game_map->calculate_distance(ship->position, p) <=
+                INSPIRATION_RADIUS &&
+            inspired(p))
+            halite_profit_estimate +=
+                INSPIRED_BONUS_MULTIPLIER * map_cell->value_estimate;
+
+        return halite_profit_estimate / max(1.0, turn_estimate);
+    };
+
+    for (Position p : positions) {
+        if (cost(ship, ship->next) < cost(ship, p)) ship->next = p;
+    }
+    return cost(ship, ship->next);
+}
 
 bool ZanZanBot::run() {
     game.update_frame();
@@ -175,8 +158,7 @@ bool ZanZanBot::run() {
             for (auto& cell : cells) {
                 cell.value_estimate = surrounding_halite(cell.position);
                 cell.cost_estimate = dist[cell.position.x][cell.position.y];
-                cell.return_estimate =
-                    game.return_estimate(cell.position).first;
+                cell.return_estimate = game.return_estimate(cell.position);
             }
         }
     }
@@ -192,7 +174,8 @@ bool ZanZanBot::run() {
         q3 = flat_halite[flat_halite.size() * 2 / 4];
     }
 
-    unordered_map<shared_ptr<Ship>, double> ships;
+    unordered_map<shared_ptr<Ship>, double> explorers;
+    vector<shared_ptr<Ship>> returners;
     vector<Command> command_queue;
 
     // Update tasks for each ship.
@@ -204,7 +187,7 @@ bool ZanZanBot::run() {
             shared_ptr<Ship> ship = it.second;
             EntityId id = ship->id;
 
-            int closest_dropoff = game_map->at(ship)->return_estimate;
+            int closest_dropoff = game_map->at(ship)->return_estimate.first;
 
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
@@ -239,7 +222,7 @@ bool ZanZanBot::run() {
                     }
 
                 bool local_dropoffs =
-                    game.return_estimate(ship->position).first <=
+                    game_map->at(ship)->return_estimate.first <=
                     game_map->width / 3;
 
                 bool ideal_dropoff =
@@ -256,29 +239,56 @@ bool ZanZanBot::run() {
                     game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
                         game.my_id, -ship->id, ship->position.x,
                         ship->position.y);
+
+                    // Fix return_estimate.
+                    for (auto& cells : game_map->cells) {
+                        for (auto& cell : cells) {
+                            cell.value_estimate =
+                                surrounding_halite(cell.position);
+                            cell.cost_estimate =
+                                dist[cell.position.x][cell.position.y];
+                            cell.return_estimate =
+                                game.return_estimate(cell.position);
+                        }
+                    }
+
                     log::log("DROPOFF!");
                     continue;
                 }
             }
 #endif
 
+            // TODO: Fix stuck.
             if (stuck(ship) && tasks[ship->id] != HARD_RETURN) {
                 command_queue.push_back(ship->stay_still());
                 game_map->at(ship)->mark_unsafe(ship);
                 game_map->mark_vis(ship->position, 1);
+            } else if (tasks[ship->id] == EXPLORE) {
+                explorers[ship] = evaluate(ship);
             } else {
-                ships[ship] = evaluate(ship);
+                returners.push_back(ship);
             }
         }
     }
 
-    // TODO: Route all returns first.
-    // Dispatch tasks.
-    while (!ships.empty()) {
+    // Route returners.
+    sort(returners.begin(), returners.end(),
+         [&](shared_ptr<Ship> u, shared_ptr<Ship> v) {
+             return game_map->calculate_distance(u->position, u->next) <
+                    game_map->calculate_distance(v->position, v->next);
+         });
+    for (shared_ptr<Ship> ship : returners) {
+        ship->next = game_map->at(ship)->return_estimate.second;
+        Direction d = game_map->navigate_return(ship, tasks[ship->id]);
+        command_queue.push_back(ship->move(d));
+    }
+
+    // Route explorers.
+    while (!explorers.empty()) {
         shared_ptr<Ship> ship;
 
-        for (auto& it : ships) {
-            if (!ship || ships[ship] < it.second) ship = it.first;
+        for (auto& it : explorers) {
+            if (!ship || explorers[ship] < it.second) ship = it.first;
         }
 
         // Update.
@@ -302,12 +312,12 @@ bool ZanZanBot::run() {
                 break;
         }
         command_queue.push_back(ship->move(d));
-        ships.erase(ship);
+        explorers.erase(ship);
 
         // Target would only move if it's value_estimate was modified.
-        for (auto& it : ships) {
+        for (auto& it : explorers) {
             if (game_map->calculate_distance(ship->next, it.first->next) <= 1)
-                ships[it.first] = evaluate(it.first);
+                explorers[it.first] = evaluate(it.first);
         }
     }
 
@@ -351,9 +361,9 @@ int main(int argc, char* argv[]) {
     z.spawn_factor[64][4] = 0.525;
 
     for (;;) {
-        auto begin = std::chrono::steady_clock::now();
+        auto begin = chrono::steady_clock::now();
         if (!z.run()) break;
-        auto end = std::chrono::steady_clock::now();
+        auto end = chrono::steady_clock::now();
         log::log(
             "Millis: ",
             chrono::duration_cast<chrono::milliseconds>(end - begin).count());
