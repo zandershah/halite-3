@@ -90,12 +90,12 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
     auto cost = [&](shared_ptr<Ship> ship, Position p) {
         MapCell* map_cell = game_map->at(p);
 
-        bool on_dropoff = map_cell->return_estimate.first == 0;
+        bool on_dropoff = map_cell->return_distance_estimate == 0;
         if (on_dropoff || map_cell->halite == 0)
             return numeric_limits<double>::min();
 
         double turn_estimate = game_map->calculate_distance(ship->position, p) +
-                               map_cell->return_estimate.first;
+                               map_cell->return_distance_estimate;
 
         Halite halite_profit_estimate =
             map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
@@ -158,7 +158,7 @@ bool ZanZanBot::run() {
             for (auto& cell : cells) {
                 cell.value_estimate = surrounding_halite(cell.position);
                 cell.cost_estimate = dist[cell.position.x][cell.position.y];
-                cell.return_estimate = game.return_estimate(cell.position);
+                game.compute_return_estimate(cell.position);
             }
         }
     }
@@ -187,7 +187,7 @@ bool ZanZanBot::run() {
             shared_ptr<Ship> ship = it.second;
             EntityId id = ship->id;
 
-            int closest_dropoff = game_map->at(ship)->return_estimate.first;
+            int closest_dropoff = game_map->at(ship)->return_distance_estimate;
 
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
@@ -222,7 +222,7 @@ bool ZanZanBot::run() {
                     }
 
                 bool local_dropoffs =
-                    game_map->at(ship)->return_estimate.first <=
+                    game_map->at(ship)->return_distance_estimate <=
                     game_map->width / 3;
 
                 bool ideal_dropoff =
@@ -247,8 +247,7 @@ bool ZanZanBot::run() {
                                 surrounding_halite(cell.position);
                             cell.cost_estimate =
                                 dist[cell.position.x][cell.position.y];
-                            cell.return_estimate =
-                                game.return_estimate(cell.position);
+                            game.compute_return_estimate(cell.position);
                         }
                     }
 
@@ -278,7 +277,7 @@ bool ZanZanBot::run() {
                     game_map->calculate_distance(v->position, v->next);
          });
     for (shared_ptr<Ship> ship : returners) {
-        ship->next = game_map->at(ship)->return_estimate.second;
+        ship->next = game_map->at(ship)->return_position_estimate;
         Direction d = game_map->navigate_return(ship, tasks[ship->id]);
         command_queue.push_back(ship->move(d));
     }
@@ -301,16 +300,7 @@ bool ZanZanBot::run() {
         }
 
         // Execute.
-        Direction d = Direction::STILL;
-        switch (tasks[ship->id]) {
-            case EXPLORE:
-                d = game_map->naive_navigate(ship, tasks[ship->id]);
-                break;
-            case RETURN:
-            case HARD_RETURN:
-                d = game_map->navigate_return(ship, tasks[ship->id]);
-                break;
-        }
+        Direction d = game_map->naive_navigate(ship, tasks[ship->id]);
         command_queue.push_back(ship->move(d));
         explorers.erase(ship);
 

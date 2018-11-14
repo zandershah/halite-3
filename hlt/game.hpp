@@ -20,16 +20,18 @@ struct Game {
     void update_frame();
     bool end_turn(const std::vector<Command>& commands);
 
-    std::pair<int, hlt::Position> return_estimate(Position p) {
-        std::pair<int, hlt::Position> estimate(
-            game_map->calculate_distance(me->shipyard->position, p),
-            me->shipyard->position);
+    void compute_return_estimate(Position p) {
+        int& return_distance_estimate =
+            game_map->at(p)->return_distance_estimate;
+        Position& return_position_estimate =
+            game_map->at(p)->return_position_estimate;
         for (auto& it : me->dropoffs) {
             int e = game_map->calculate_distance(it.second->position, p);
-            if (e < estimate.first)
-                estimate = std::make_pair(e, it.second->position);
+            if (e < return_distance_estimate) {
+                return_distance_estimate = e;
+                return_position_estimate = it.second->position;
+            }
         }
-        return estimate;
     }
 };
 
