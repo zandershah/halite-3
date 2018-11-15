@@ -87,8 +87,6 @@ struct GameMap {
         return possible_moves;
     }
 
-    Direction navigate_return(std::shared_ptr<Ship> ship, Task task);
-
     Direction naive_navigate(std::shared_ptr<Ship> ship, Task task) {
         const Position& destination = ship->next;
         // get_unsafe_moves normalizes for us

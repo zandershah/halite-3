@@ -1,3 +1,4 @@
+#include "MyBot.h"
 #include "hlt/game.hpp"
 
 #include <bits/stdc++.h>
@@ -49,10 +50,81 @@ struct ZanZanBot {
         return ret;
     }
 
+    Direction navigate_return(shared_ptr<Ship> ship);
+
     double evaluate(shared_ptr<Ship> ship);
 
     bool run();
 };
+
+Direction ZanZanBot::navigate_return(shared_ptr<Ship> ship) {
+    unique_ptr<GameMap>& game_map = game.game_map;
+    // Position represents last.
+    vector<vector<State>> dp(game_map->height, vector<State>(game_map->width));
+    // Position represents current.
+    priority_queue<State, vector<State>, StateCompare> pq;
+    pq.emplace(0, ship->halite, game_map->normalize(ship->position));
+    dp[pq.top().p.x][pq.top().p.y] = pq.top();
+    while (!pq.empty()) {
+        State s = pq.top();
+        pq.pop();
+
+        if (s.p == ship->next) break;
+        if (dp[s.p.x][s.p.y] < s) continue;
+
+        // Try to wait 'n' turns.
+        Halite ship_halite = s.h;
+        Halite left_halite = game_map->at(s.p)->halite;
+        for (size_t i = 0; i <= 5; ++i) {
+            const Halite move_cost = left_halite / MOVE_COST_RATIO;
+
+            if (game_map->is_vis(s.p, s.t + i)) break;
+            if (ship_halite < move_cost) continue;
+
+            State ss(s.t + i + 1, ship_halite - move_cost, s.p);
+            for (Position p : s.p.get_surrounding_cardinals()) {
+                p = game_map->normalize(p);
+                if (ss < dp[p.x][p.y] && !game_map->is_vis(p, ss.t)) {
+                    dp[p.x][p.y] = ss;
+                    pq.emplace(ss.t, ss.h, p);
+                }
+            }
+
+            Halite delta_halite =
+                (left_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+            delta_halite = min(delta_halite, MAX_HALITE - ship_halite);
+
+            ship_halite += delta_halite;
+            left_halite -= delta_halite;
+        }
+    }
+
+    vector<Position> path;
+    path.push_back(game_map->normalize(ship->next));
+    while (path.back() != ship->position) {
+        State& s = dp[path.back().x][path.back().y];
+        if (s.t == numeric_limits<int>::max()) break;
+        for (size_t t = s.t; t > dp[s.p.x][s.p.y].t; --t) path.push_back(s.p);
+    }
+
+    if (path.back() != ship->position || path.size() == 1) {
+        if (tasks[ship->id] != HARD_RETURN)
+            game_map->mark_vis(ship->position, 1);
+        return Direction::STILL;
+    }
+
+    reverse(path.begin(), path.end());
+    for (size_t i = 0; i < path.size(); ++i) {
+        if (tasks[ship->id] != HARD_RETURN || i + 1 != path.size())
+            game_map->mark_vis(path[i], i);
+    }
+
+    for (Direction d : ALL_CARDINALS) {
+        if (game_map->normalize(path[0].directional_offset(d)) == path[1])
+            return d;
+    }
+    return Direction::STILL;
+}
 
 double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
     unique_ptr<GameMap>& game_map = game.game_map;
@@ -285,7 +357,7 @@ bool ZanZanBot::run() {
          });
     for (shared_ptr<Ship> ship : returners) {
         ship->next = game_map->at(ship)->return_position_estimate;
-        Direction d = game_map->navigate_return(ship, tasks[ship->id]);
+        Direction d = navigate_return(ship);
         command_queue.push_back(ship->move(d));
     }
 
