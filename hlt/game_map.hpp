@@ -110,7 +110,12 @@ struct GameMap {
             return Direction::STILL;
         }
 
-        for (Direction d : ALL_CARDINALS) {
+        auto all = ALL_CARDINALS;
+        std::sort(all.begin(), all.end(), [&](Direction u, Direction v) {
+            return at(ship->position.directional_offset(u))->halite >
+                   at(ship->position.directional_offset(v))->halite;
+        });
+        for (Direction d : all) {
             Position target_pos = ship->position.directional_offset(d);
             if (!is_vis(target_pos, 1)) {
                 if (task != HARD_RETURN || target_pos != destination) {

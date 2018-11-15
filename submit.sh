@@ -1,1 +1,1 @@
-zip submit CMakeLists.txt MyBot.cpp ZanZanBot.* hlt/*
+zip submit CMakeLists.txt MyBot.* ZanZanBot.* hlt/*

@@ -322,15 +322,9 @@ bool ZanZanBot::run() {
                         ship->position.y);
 
                     // Fix return_estimate.
-                    for (auto& cells : game_map->cells) {
-                        for (auto& cell : cells) {
-                            cell.value_estimate =
-                                surrounding_halite(cell.position);
-                            cell.cost_estimate =
-                                dist[cell.position.x][cell.position.y];
+                    for (auto& cells : game_map->cells)
+                        for (auto& cell : cells)
                             game.compute_return_estimate(cell.position);
-                        }
-                    }
 
                     log::log("DROPOFF!");
                     continue;
@@ -430,10 +424,10 @@ int main(int argc, char* argv[]) {
     z.spawn_factor[56][2] = 0.55;
     z.spawn_factor[64][2] = 0.675;
 
-    z.spawn_factor[32][4] = 0.325;
+    z.spawn_factor[32][4] = 0.35;
     z.spawn_factor[40][4] = 0.375;
     z.spawn_factor[48][4] = 0.5;
-    z.spawn_factor[56][4] = 0.5;
+    z.spawn_factor[56][4] = 0.525;
     z.spawn_factor[64][4] = 0.525;
 
     for (;;) {
