@@ -61,6 +61,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         vector<vector<Halite>> dist(
             game_map->height,
             vector<Halite>(game_map->width, numeric_limits<Halite>::max()));
+        assert(game_map->normalize(ship->position) == ship->position);
         dist[ship->position.x][ship->position.y] = 0;
         {
             priority_queue<pair<Halite, Position>> pq;
@@ -97,6 +98,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         double turn_estimate = game_map->calculate_distance(ship->position, p) +
                                map_cell->return_distance_estimate;
 
+        assert(game_map->normalize(p) == p);
         Halite halite_profit_estimate =
             map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
         if (game_map->calculate_distance(ship->position, p) <=
@@ -132,9 +134,13 @@ bool ZanZanBot::run() {
             vector<Halite>(game_map->width, numeric_limits<Halite>::max()));
         priority_queue<pair<Halite, Position>> pq;
 
+        assert(game_map->normalize(me->shipyard->position) ==
+               me->shipyard->position);
         dist[me->shipyard->position.x][me->shipyard->position.y] = 0;
         pq.emplace(0, me->shipyard->position);
         for (auto& it : me->dropoffs) {
+            assert(game_map->normalize(it.second->position) ==
+                   it.second->position);
             dist[it.second->position.x][it.second->position.y] = 0;
             pq.emplace(0, it.second->position);
         }
@@ -156,6 +162,7 @@ bool ZanZanBot::run() {
 
         for (auto& cells : game_map->cells) {
             for (auto& cell : cells) {
+                assert(game_map->normalize(cell.position) == cell.position);
                 cell.value_estimate = surrounding_halite(cell.position);
                 cell.cost_estimate = dist[cell.position.x][cell.position.y];
                 game.compute_return_estimate(cell.position);
@@ -210,7 +217,7 @@ bool ZanZanBot::run() {
             }
 
                 // Dropoff.
-#ifdef USE_DROPOFF
+#if 0
             {
                 Halite halite_around = 0;
                 for (vector<MapCell>& cells : game_map->cells)
