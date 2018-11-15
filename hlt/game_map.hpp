@@ -102,7 +102,7 @@ struct GameMap {
             }
         }
 
-        if (!is_vis(ship->position, 1)) {
+        if (!is_vis(ship->position, 1) && at(ship)->halite) {
             if (task != HARD_RETURN || ship->position != destination) {
                 at(ship)->mark_unsafe(ship);
                 mark_vis(ship->position, 1);

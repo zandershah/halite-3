@@ -19,6 +19,8 @@ struct ZanZanBot {
 
     unordered_map<int, unordered_map<int, double>> spawn_factor;
 
+    unordered_map<EntityId, int> last_moved;
+
     bool stuck(shared_ptr<Ship> ship) {
         return ship->halite <
                    game.game_map->at(ship)->halite / MOVE_COST_RATIO ||
@@ -382,6 +384,11 @@ bool ZanZanBot::run() {
         Direction d = game_map->naive_navigate(ship, tasks[ship->id]);
         command_queue.push_back(ship->move(d));
         explorers.erase(ship);
+
+        if (d != Direction::STILL)
+            last_moved[ship->id] = game.turn_number;
+        else if (game.turn_number - last_moved[ship->id] >= 10)
+            tasks[ship->id] = RETURN;
 
         // Target would only move if it's value_estimate was modified.
         for (auto& it : explorers) {
