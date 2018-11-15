@@ -7,10 +7,10 @@ using namespace hlt;
 namespace {
 
 struct State {
-    State() : t(numeric_limits<int>::max()), p(0, 0) {}
+    State() : p(0, 0) {}
     State(size_t tt, Halite hh, Position pp) : t(tt), h(hh), p(pp) {}
-    size_t t;
-    Halite h;
+    size_t t = numeric_limits<int>::max();
+    Halite h = 0;
     Position p;
 
     bool operator<(State& s) const {
