@@ -135,7 +135,6 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         vector<vector<Halite>> dist(
             game_map->height,
             vector<Halite>(game_map->width, numeric_limits<Halite>::max()));
-        assert(game_map->normalize(ship->position) == ship->position);
         dist[ship->position.x][ship->position.y] = 0;
         {
             priority_queue<pair<Halite, Position>> pq;
@@ -169,15 +168,12 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         if (on_dropoff || map_cell->halite == 0)
             return numeric_limits<double>::min();
 
-        double turn_estimate = game_map->calculate_distance(ship->position, p) +
-                               map_cell->return_distance_estimate;
+        unsigned int d = game_map->calculate_distance(ship->position, p);
+        double turn_estimate = d + map_cell->return_distance_estimate;
 
-        assert(game_map->normalize(p) == p);
         Halite halite_profit_estimate =
             map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
-        if (game_map->calculate_distance(ship->position, p) <=
-                INSPIRATION_RADIUS &&
-            inspired(p))
+        if (d <= game.players.size() / 2 * INSPIRATION_RADIUS && inspired(p))
             halite_profit_estimate +=
                 INSPIRED_BONUS_MULTIPLIER * map_cell->value_estimate;
 
@@ -208,13 +204,9 @@ bool ZanZanBot::run() {
             vector<Halite>(game_map->width, numeric_limits<Halite>::max()));
         priority_queue<pair<Halite, Position>> pq;
 
-        assert(game_map->normalize(me->shipyard->position) ==
-               me->shipyard->position);
         dist[me->shipyard->position.x][me->shipyard->position.y] = 0;
         pq.emplace(0, me->shipyard->position);
         for (auto& it : me->dropoffs) {
-            assert(game_map->normalize(it.second->position) ==
-                   it.second->position);
             dist[it.second->position.x][it.second->position.y] = 0;
             pq.emplace(0, it.second->position);
         }
@@ -236,7 +228,6 @@ bool ZanZanBot::run() {
 
         for (auto& cells : game_map->cells) {
             for (auto& cell : cells) {
-                assert(game_map->normalize(cell.position) == cell.position);
                 cell.value_estimate = surrounding_halite(cell.position);
                 cell.cost_estimate = dist[cell.position.x][cell.position.y];
                 game.compute_return_estimate(cell.position);
@@ -262,7 +253,8 @@ bool ZanZanBot::run() {
     // Update tasks for each ship.
     {
         double return_cutoff = 0.95;
-        if (game.turn_number <= MAX_TURNS * 0.75) return_cutoff = 0.75;
+        if (game.turn_number <= MAX_TURNS * 0.75 && game.players.size() == 2)
+            return_cutoff = 0.75;
 
         for (auto& it : me->ships) {
             shared_ptr<Ship> ship = it.second;
@@ -290,8 +282,7 @@ bool ZanZanBot::run() {
                     break;
             }
 
-                // Dropoff.
-#if 0
+            // Dropoff.
             {
                 Halite halite_around = 0;
                 for (vector<MapCell>& cells : game_map->cells)
@@ -302,9 +293,9 @@ bool ZanZanBot::run() {
                             halite_around += cell.halite;
                     }
 
+                int d = game_map->width / (game.players.size() == 2 ? 3 : 6);
                 bool local_dropoffs =
-                    game_map->at(ship)->return_distance_estimate <=
-                    game_map->width / 3;
+                    game_map->at(ship)->return_distance_estimate <= d;
 
                 bool ideal_dropoff =
                     halite_around >= MAX_HALITE * game_map->width / 4 &&
@@ -330,7 +321,6 @@ bool ZanZanBot::run() {
                     continue;
                 }
             }
-#endif
 
             // TODO: Fix stuck.
             if (stuck(ship) && tasks[ship->id] != HARD_RETURN) {
@@ -422,7 +412,7 @@ int main(int argc, char* argv[]) {
     z.spawn_factor[40][2] = 0.5;
     z.spawn_factor[48][2] = 0.5;
     z.spawn_factor[56][2] = 0.55;
-    z.spawn_factor[64][2] = 0.675;
+    z.spawn_factor[64][2] = 0.625;
 
     z.spawn_factor[32][4] = 0.35;
     z.spawn_factor[40][4] = 0.375;
