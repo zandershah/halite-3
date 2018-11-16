@@ -173,9 +173,9 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
 
         Halite halite_profit_estimate =
             map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
-        if (d <= game.players.size() / 2 * INSPIRATION_RADIUS && inspired(p))
+        if (d <= INSPIRATION_RADIUS && inspired(p))
             halite_profit_estimate +=
-                INSPIRED_BONUS_MULTIPLIER * map_cell->value_estimate;
+                INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
 
         return halite_profit_estimate / max(1.0, turn_estimate);
     };
