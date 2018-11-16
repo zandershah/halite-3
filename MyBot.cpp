@@ -21,10 +21,9 @@ struct ZanZanBot {
 
     unordered_map<EntityId, int> last_moved;
 
-    bool stuck(shared_ptr<Ship> ship) {
-        return ship->halite <
-                   game.game_map->at(ship)->halite / MOVE_COST_RATIO ||
-               (!ship->is_full() && game.game_map->at(ship)->halite >= q3);
+    bool stuck(Halite ship_halite, Halite left_halite, bool is_full) {
+        return ship_halite < left_halite / MOVE_COST_RATIO ||
+               (!is_full && left_halite >= q3);
     }
 
     bool inspired(Position p) {
@@ -323,10 +322,26 @@ bool ZanZanBot::run() {
             }
 
             // TODO: Fix stuck.
-            if (stuck(ship) && tasks[ship->id] != HARD_RETURN) {
+            if (stuck(ship->halite, game_map->at(ship)->halite,
+                      ship->is_full()) &&
+                tasks[ship->id] != HARD_RETURN) {
                 command_queue.push_back(ship->stay_still());
-                game_map->at(ship)->mark_unsafe(ship);
-                game_map->mark_vis(ship->position, 1);
+
+                Halite ship_halite = ship->halite;
+                Halite left_halite = game_map->at(ship)->halite;
+                // Figure out how many turns the ship will be stuck.
+                for (int i = 1;
+                     stuck(ship_halite, left_halite, ship_halite == MAX_HALITE);
+                     ++i) {
+                    game_map->mark_vis(ship->position, i);
+
+                    Halite delta_halite =
+                        (left_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+                    delta_halite = min(delta_halite, MAX_HALITE - ship_halite);
+
+                    ship_halite += delta_halite;
+                    left_halite -= delta_halite;
+                }
             } else if (tasks[ship->id] == EXPLORE) {
                 explorers[ship] = evaluate(ship);
             } else {
