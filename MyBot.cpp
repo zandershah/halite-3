@@ -167,7 +167,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
         if (on_dropoff || map_cell->halite == 0)
             return numeric_limits<double>::min();
 
-        unsigned int d = game_map->calculate_distance(ship->position, p);
+        int d = game_map->calculate_distance(ship->position, p);
         double turn_estimate = d + map_cell->return_distance_estimate;
 
         Halite halite_profit_estimate =
