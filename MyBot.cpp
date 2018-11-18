@@ -301,12 +301,12 @@ bool ZanZanBot::run() {
                             halite_around += cell.halite;
                     }
 
-                int d = game_map->width / (game.players.size() == 2 ? 3 : 6);
+                int d = game_map->width / (game.players.size() == 2 ? 3 : 4);
                 bool local_dropoffs =
                     game_map->at(ship)->return_distance_estimate <= d;
 
                 bool ideal_dropoff =
-                    halite_around >= MAX_HALITE * game_map->width / 4 &&
+                    halite_around >= MAX_HALITE * game_map->width / 3 &&
                     game_map->at(ship)->halite + ship->halite + me->halite >=
                         DROPOFF_COST &&
                     !local_dropoffs && game.turn_number <= MAX_TURNS * 0.666;

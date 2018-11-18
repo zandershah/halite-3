@@ -51,7 +51,12 @@ void hlt::Game::update_frame() {
             Position& p = ship->position;
             compute_return_estimate(p);
             MapCell* map_cell = game_map->at(ship);
-            if (players.size() == 4 && map_cell->return_distance_estimate) {
+
+            bool should_avoid =
+                players.size() == 4 && map_cell->return_distance_estimate;
+            should_avoid |= ship->halite <= 250;
+
+            if (should_avoid) {
                 map_cell->mark_unsafe(ship);
                 for (int i = 1; i <= 5; ++i) {
                     game_map->mark_vis(p, i);
