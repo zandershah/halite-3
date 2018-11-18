@@ -7,7 +7,7 @@ using namespace std;
 using namespace hlt;
 using namespace constants;
 
-const int HALITE_FALLOFF = 5;
+const int HALITE_FALLOFF = 100;
 
 struct ZanZanBot {
     Game game;
@@ -22,8 +22,8 @@ struct ZanZanBot {
     unordered_map<EntityId, int> last_moved;
 
     bool stuck(Halite ship_halite, Halite left_halite, bool is_full) {
-        return ship_halite < left_halite / MOVE_COST_RATIO ||
-               (!is_full && left_halite >= q3);
+        if (!left_halite || is_full) return false;
+        return ship_halite < left_halite / MOVE_COST_RATIO || left_halite >= q3;
     }
 
     bool inspired(Position p) {
@@ -49,6 +49,14 @@ struct ZanZanBot {
         for (Position pp : p.get_surrounding_cardinals())
             ret += game.game_map->at(pp)->halite / HALITE_FALLOFF;
         return ret;
+    }
+
+    void claim_position(Position p) {
+        const Halite delta_halite = game.game_map->at(p)->halite;
+        game.game_map->at(p)->value_estimate -= delta_halite;
+        for (Position pp : p.get_surrounding_cardinals())
+            game.game_map->at(pp)->value_estimate -=
+                delta_halite / HALITE_FALLOFF;
     }
 
     Direction navigate_return(shared_ptr<Ship> ship);
@@ -281,6 +289,7 @@ bool ZanZanBot::run() {
                     break;
             }
 
+#if 1
             // Dropoff.
             {
                 Halite halite_around = 0;
@@ -320,12 +329,14 @@ bool ZanZanBot::run() {
                     continue;
                 }
             }
+#endif
 
             // TODO: Fix stuck.
             if (stuck(ship->halite, game_map->at(ship)->halite,
                       ship->is_full()) &&
                 tasks[ship->id] != HARD_RETURN) {
                 command_queue.push_back(ship->stay_still());
+                claim_position(ship->position);
 
                 Halite ship_halite = ship->halite;
                 Halite left_halite = game_map->at(ship)->halite;
@@ -371,13 +382,7 @@ bool ZanZanBot::run() {
         }
 
         // Update.
-        {
-            const Halite delta_halite = game_map->at(ship->next)->halite;
-            game_map->at(ship->next)->value_estimate -= delta_halite;
-            for (Position p : ship->next.get_surrounding_cardinals())
-                game_map->at(p)->value_estimate -=
-                    delta_halite / HALITE_FALLOFF;
-        }
+        claim_position(ship->next);
 
         // Execute.
         Direction d = game_map->naive_navigate(ship, tasks[ship->id]);
@@ -419,8 +424,8 @@ int main(int argc, char* argv[]) {
 
     // At this point "game" variable is populated with initial map data.
     // This is a good place to do computationally expensive start-up
-    // pre-processing. As soon as you call "ready" function below, the 2 second
-    // per turn timer will start.
+    // pre-processing. As soon as you call "ready" function below, the 2
+    // second per turn timer will start.
     z.game.ready("ZanZanBot");
 
     z.spawn_factor[32][2] = 0.5;
