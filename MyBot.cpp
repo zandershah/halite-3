@@ -7,8 +7,6 @@ using namespace std;
 using namespace hlt;
 using namespace constants;
 
-const int HALITE_FALLOFF = 100;
-
 // Fluorine JSON.
 stringstream flog;
 void add_flog(int t, int x, int y, string c, string m = "") {
@@ -59,9 +57,6 @@ struct ZanZanBot {
     void claim_position(Position p) {
         const Halite delta_halite = game.game_map->at(p)->halite;
         game.game_map->at(p)->value_estimate -= delta_halite;
-        for (Position pp : p.get_surrounding_cardinals())
-            game.game_map->at(pp)->value_estimate -=
-                delta_halite / HALITE_FALLOFF;
     }
 
     Direction navigate_return(shared_ptr<Ship> ship);
@@ -185,7 +180,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
 
         Halite halite_profit_estimate =
             map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
-        if (d <= 2 * INSPIRATION_RADIUS && inspired(p))
+        if (d <= INSPIRATION_RADIUS && inspired(p))
             halite_profit_estimate +=
                 INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
 
@@ -256,6 +251,8 @@ bool ZanZanBot::run() {
             for (MapCell cell : cells) flat_halite.push_back(cell.halite);
         sort(flat_halite.begin(), flat_halite.end());
         halite_cutoff = flat_halite[flat_halite.size() * 2 / 4];
+        if (game.turn_number <= MAX_TURNS * 0.25)
+            halite_cutoff = flat_halite[flat_halite.size() * 3 / 4];
     }
 
     unordered_map<shared_ptr<Ship>, double> explorers;
@@ -456,10 +453,10 @@ int main(int argc, char* argv[]) {
     z.spawn_factor[64][2] = 0.625;
 
     z.spawn_factor[32][4] = 0.35;
-    z.spawn_factor[40][4] = 0.375;
-    z.spawn_factor[48][4] = 0.5;
+    z.spawn_factor[40][4] = 0.45;
+    z.spawn_factor[48][4] = 0.50;
     z.spawn_factor[56][4] = 0.55;
-    z.spawn_factor[64][4] = 0.55;
+    z.spawn_factor[64][4] = 0.60;
 
     for (;;) {
         auto begin = chrono::steady_clock::now();
