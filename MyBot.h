@@ -7,7 +7,7 @@
 
 struct State {
     State() : p(0, 0) {}
-    State(size_t tt, hlt::Halite hh, hlt::Position pp) : t(tt), h(hh), p(pp) {}
+    State(size_t t, hlt::Halite h, hlt::Position p) : t(t), h(h), p(p) {}
     size_t t = std::numeric_limits<int>::max();
     hlt::Halite h = 0;
     hlt::Position p;

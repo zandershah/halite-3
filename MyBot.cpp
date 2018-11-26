@@ -9,10 +9,21 @@ using namespace constants;
 
 const int HALITE_FALLOFF = 100;
 
+// Fluorine JSON.
+stringstream flog;
+void add_flog(int t, int x, int y, string c, string m = "") {
+    flog << "{\"t\": " << t << ", \"x\": " << x << ", \"y\": " << y
+         << ", \"color\": \"" << c << "\"";
+    if (!m.empty()) {
+        flog << ", \"msg\": \"" << m << "\"";
+    }
+    flog << "},\n";
+}
+
 struct ZanZanBot {
     Game game;
     unordered_map<EntityId, Task> tasks;
-    Halite q3;
+    Halite halite_cutoff;
 
     unordered_map<EntityId, vector<vector<Halite>>> dijkstras;
     unordered_map<Position, bool> inspired_cache;
@@ -23,7 +34,8 @@ struct ZanZanBot {
 
     bool stuck(Halite ship_halite, Halite left_halite, bool is_full) {
         if (!left_halite || is_full) return false;
-        return ship_halite < left_halite / MOVE_COST_RATIO || left_halite >= q3;
+        return ship_halite < left_halite / MOVE_COST_RATIO ||
+               left_halite >= halite_cutoff;
     }
 
     bool inspired(Position p) {
@@ -42,13 +54,6 @@ struct ZanZanBot {
         }
         return inspired_cache[p] =
                    close_enemies >= constants::INSPIRATION_SHIP_COUNT;
-    }
-
-    Halite surrounding_halite(Position p) {
-        Halite ret = game.game_map->at(p)->halite;
-        for (Position pp : p.get_surrounding_cardinals())
-            ret += game.game_map->at(pp)->halite / HALITE_FALLOFF;
-        return ret;
     }
 
     void claim_position(Position p) {
@@ -180,7 +185,7 @@ double ZanZanBot::evaluate(shared_ptr<Ship> ship) {
 
         Halite halite_profit_estimate =
             map_cell->value_estimate + map_cell->cost_estimate - dist[p.x][p.y];
-        if (d <= INSPIRATION_RADIUS && inspired(p))
+        if (d <= 2 * INSPIRATION_RADIUS && inspired(p))
             halite_profit_estimate +=
                 INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
 
@@ -235,7 +240,7 @@ bool ZanZanBot::run() {
 
         for (auto& cells : game_map->cells) {
             for (auto& cell : cells) {
-                cell.value_estimate = surrounding_halite(cell.position);
+                cell.value_estimate = cell.halite;
                 cell.cost_estimate = dist[cell.position.x][cell.position.y];
                 game.compute_return_estimate(cell.position);
             }
@@ -250,7 +255,7 @@ bool ZanZanBot::run() {
         for (vector<MapCell>& cells : game_map->cells)
             for (MapCell cell : cells) flat_halite.push_back(cell.halite);
         sort(flat_halite.begin(), flat_halite.end());
-        q3 = flat_halite[flat_halite.size() * 2 / 4];
+        halite_cutoff = flat_halite[flat_halite.size() * 2 / 4];
     }
 
     unordered_map<shared_ptr<Ship>, double> explorers;
@@ -387,11 +392,14 @@ bool ZanZanBot::run() {
         // Execute.
         Direction d = game_map->naive_navigate(ship, tasks[ship->id]);
         command_queue.push_back(ship->move(d));
+
+        add_flog(game.turn_number, ship->next.x, ship->next.y, "red");
+
         explorers.erase(ship);
 
         if (d != Direction::STILL)
             last_moved[ship->id] = game.turn_number;
-        else if (game.turn_number - last_moved[ship->id] >= 10)
+        else if (game.turn_number - last_moved[ship->id] >= 5)
             tasks[ship->id] = RETURN;
 
         // Target would only move if it's value_estimate was modified.
@@ -401,19 +409,32 @@ bool ZanZanBot::run() {
         }
     }
 
-    size_t ship_count = 0;
+    size_t ship_lo = 0, ship_hi = 1005;
     // TODO: Smarter counter of mid-game aggression.
-    if (game.players.size() == 2 && game.turn_number <= MAX_TURNS * 0.95) {
-        for (auto& player : game.players)
-            if (player->id != game.my_id) ship_count = player->ships.size();
+    if (game.turn_number <= MAX_TURNS * 0.95) {
+        swap(ship_lo, ship_hi);
+        for (auto& player : game.players) {
+            if (player->id == game.my_id) continue;
+            ship_lo = min(ship_lo, player->ships.size());
+            ship_hi = max(ship_hi, player->ships.size());
+        }
     }
 
     if (me->halite >= SHIP_COST &&
         !game_map->is_vis(me->shipyard->position, 1) &&
+        me->ships.size() <= ship_hi + 5 &&
         (game.turn_number <=
              MAX_TURNS * spawn_factor[game_map->width][game.players.size()] ||
-         me->ships.size() < ship_count)) {
+         me->ships.size() < ship_lo)) {
         command_queue.push_back(me->shipyard->spawn());
+    }
+
+    if (game.turn_number == MAX_TURNS) {
+        log::log("Done!");
+        ofstream fout;
+        fout.open("replays/_flog.json");
+        fout << "[\n" << flog.str();
+        fout.close();
     }
 
     return game.end_turn(command_queue);
@@ -426,7 +447,7 @@ int main(int argc, char* argv[]) {
     // This is a good place to do computationally expensive start-up
     // pre-processing. As soon as you call "ready" function below, the 2
     // second per turn timer will start.
-    z.game.ready("ZanZanBot");
+    z.game.ready("ZanZanBotRevived");
 
     z.spawn_factor[32][2] = 0.5;
     z.spawn_factor[40][2] = 0.5;
@@ -437,8 +458,8 @@ int main(int argc, char* argv[]) {
     z.spawn_factor[32][4] = 0.35;
     z.spawn_factor[40][4] = 0.375;
     z.spawn_factor[48][4] = 0.5;
-    z.spawn_factor[56][4] = 0.525;
-    z.spawn_factor[64][4] = 0.525;
+    z.spawn_factor[56][4] = 0.55;
+    z.spawn_factor[64][4] = 0.55;
 
     for (;;) {
         auto begin = chrono::steady_clock::now();

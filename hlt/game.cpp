@@ -54,8 +54,6 @@ void hlt::Game::update_frame() {
 
             bool should_avoid =
                 players.size() == 4 && map_cell->return_distance_estimate;
-            should_avoid |= ship->halite <= 250;
-
             if (should_avoid) {
                 map_cell->mark_unsafe(ship);
                 for (int i = 1; i <= 5; ++i) {
