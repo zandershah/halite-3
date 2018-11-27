@@ -180,10 +180,21 @@ int main(int argc, char* argv[]) {
 
             // TODO: Dropoff.
             // TODO: Fix stuck.
-            if (stuck(ship)) {
+            if (stuck(ship) && tasks[id] != HARD_RETURN) {
                 command_queue.push_back(ship->stay_still());
                 targets.erase(ship->position);
                 is_vis[ship->position] = true;
+                continue;
+            }
+
+            // Hardcoded force return.
+            if (tasks[id] == HARD_RETURN && closest_base_dist <= 1) {
+                for (Direction d : ALL_CARDINALS) {
+                    if (ship->position.directional_offset(d) ==
+                        closest_base[ship->position]) {
+                        command_queue.push_back(ship->move(d));
+                    }
+                }
                 continue;
             }
 
@@ -233,7 +244,7 @@ int main(int argc, char* argv[]) {
             HungarianAlgorithm ha;
             ha.Solve(cost_matrix, assignment);
 
-            for (int i = 0; i < explorers.size(); ++i) {
+            for (size_t i = 0; i < explorers.size(); ++i) {
                 auto it = targets.begin();
                 advance(it, assignment[i]);
                 explorers[i]->next = *it;
@@ -267,14 +278,15 @@ int main(int argc, char* argv[]) {
                                         local_targets.end());
 
             unordered_map<Position, int> move_indices;
-            for (int i = 0; i < move_space.size(); ++i) {
+            for (size_t i = 0; i < move_space.size(); ++i) {
                 move_indices[move_space[i]] = i;
             }
 
             // Fill cost matrix. Moves in the optimal direction have low cost.
             vector<vector<double>> cost_matrix;
             for (auto ship : explorers) {
-                vector<double> cost(move_space.size(), 1e9);
+                vector<double> cost(move_space.size(),
+                                    numeric_limits<double>::max());
                 Position p = ship->position;
 
                 for (Position pp : p.get_surrounding_cardinals()) {
@@ -282,18 +294,10 @@ int main(int argc, char* argv[]) {
                     if (!is_vis[pp]) cost[move_indices[pp]] = 1e5;
                 }
                 if (!is_vis[p]) cost[move_indices[p]] = 1e3;
+
                 for (Direction d : game_map->get_unsafe_moves(p, ship->next)) {
                     Position pp = game_map->normalize(p.directional_offset(d));
                     if (!is_vis[pp]) cost[move_indices[pp]] = 1;
-                }
-
-                for (int i = 0; i < cost.size(); ++i) {
-                    if (cost[i] < 1e9) {
-                        if (game_map->calculate_distance(p, move_space[i]) >
-                            1) {
-                            log::log("PROBLEM!", cost[i], p, move_space[i]);
-                        }
-                    }
                 }
 
                 cost_matrix.push_back(move(cost));
@@ -325,7 +329,7 @@ int main(int argc, char* argv[]) {
         log::log("Spawn ships.");
         size_t ship_lo = 0;
         // TODO: Smarter counter of mid-game aggression.
-        if (game.turn_number <= MAX_TURNS * 0.95) {
+        if (game.turn_number <= MAX_TURNS * 0.75) {
             ship_lo = numeric_limits<size_t>::max();
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
