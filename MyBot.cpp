@@ -141,6 +141,10 @@ int main(int argc, char* argv[]) {
                 if (game.players.size() == 4 &&
                     game_map->calculate_distance(p, closest_base[p])) {
                     targets.erase(p);
+                    for (Position pp :
+                         it.second->position.get_surrounding_cardinals()) {
+                        targets.erase(game_map->normalize(pp));
+                    }
                 }
             }
         }
