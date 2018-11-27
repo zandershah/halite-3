@@ -11,7 +11,6 @@ struct GameMap {
     int width;
     int height;
     std::vector<std::vector<MapCell>> cells;
-    std::set<std::pair<Position, int>> vis;
 
     MapCell* at(const Position& position) {
         Position normalized = normalize(position);
@@ -24,11 +23,6 @@ struct GameMap {
 
     MapCell* at(const std::shared_ptr<Entity>& entity) {
         return at(entity->position);
-    }
-
-    void mark_vis(const Position& p, int t) { vis.emplace(normalize(p), t); }
-    bool is_vis(const Position& p, int t) {
-        return vis.find(std::make_pair(normalize(p), t)) != vis.end();
     }
 
     int calculate_distance(const Position& source, const Position& target) {
@@ -85,48 +79,6 @@ struct GameMap {
                   });
 
         return possible_moves;
-    }
-
-    Direction naive_navigate(std::shared_ptr<Ship> ship, Task task) {
-        const Position& destination = ship->next;
-        // get_unsafe_moves normalizes for us
-        for (Direction direction :
-             get_unsafe_moves(ship->position, destination)) {
-            Position target_pos = ship->position.directional_offset(direction);
-            if (!is_vis(target_pos, 1)) {
-                if (task != HARD_RETURN || target_pos != destination) {
-                    at(target_pos)->mark_unsafe(ship);
-                    mark_vis(target_pos, 1);
-                }
-                return direction;
-            }
-        }
-
-        if (!is_vis(ship->position, 1) && at(ship)->halite) {
-            if (task != HARD_RETURN || ship->position != destination) {
-                at(ship)->mark_unsafe(ship);
-                mark_vis(ship->position, 1);
-            }
-            return Direction::STILL;
-        }
-
-        auto all = ALL_CARDINALS;
-        std::sort(all.begin(), all.end(), [&](Direction u, Direction v) {
-            return at(ship->position.directional_offset(u))->halite >
-                   at(ship->position.directional_offset(v))->halite;
-        });
-        for (Direction d : all) {
-            Position target_pos = ship->position.directional_offset(d);
-            if (!is_vis(target_pos, 1)) {
-                if (task != HARD_RETURN || target_pos != destination) {
-                    at(target_pos)->mark_unsafe(ship);
-                    mark_vis(target_pos, 1);
-                }
-                return d;
-            }
-        }
-
-        return Direction::STILL;
     }
 
     void _update();

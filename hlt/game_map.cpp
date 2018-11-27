@@ -21,8 +21,6 @@ void GameMap::_update() {
         get_sstream() >> x >> y >> halite;
         cells[y][x].halite = halite;
     }
-
-    vis.clear();
 }
 
 unique_ptr<GameMap> GameMap::_generate() {

@@ -44,26 +44,6 @@ void hlt::Game::update_frame() {
     game_map->_update();
 
     for (const auto& player : players) {
-        for (auto& ship_iterator : player->ships) {
-            auto ship = ship_iterator.second;
-            if (ship->owner == my_id) continue;
-
-            Position& p = ship->position;
-            compute_return_estimate(p);
-            MapCell* map_cell = game_map->at(ship);
-
-            bool should_avoid =
-                players.size() == 4 && map_cell->return_distance_estimate;
-            if (should_avoid) {
-                map_cell->mark_unsafe(ship);
-                for (int i = 1; i <= 5; ++i) {
-                    game_map->mark_vis(p, i);
-                    for (Position pp : p.get_surrounding_cardinals())
-                        game_map->mark_vis(pp, i);
-                }
-            }
-        }
-
         game_map->at(player->shipyard)->structure = player->shipyard;
 
         for (auto& dropoff_iterator : player->dropoffs) {
