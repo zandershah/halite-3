@@ -56,21 +56,25 @@ int main(int argc, char* argv[]) {
     // This is a good place to do computationally expensive start-up
     // pre-processing. As soon as you call "ready" function below, the 2
     // second per turn timer will start.
-    game.ready("ZanZanBotRevived");
+    game.ready("ZanZanBot");
 
-    unordered_map<int, unordered_map<int, double>> spawn_factor;
+    double spawn_factor;
     {
-        spawn_factor[32][2] = 0.5;
-        spawn_factor[40][2] = 0.5;
-        spawn_factor[48][2] = 0.5;
-        spawn_factor[56][2] = 0.55;
-        spawn_factor[64][2] = 0.675;
+        unordered_map<int, unordered_map<int, double>> f;
 
-        spawn_factor[32][4] = 0.325;
-        spawn_factor[40][4] = 0.375;
-        spawn_factor[48][4] = 0.5;
-        spawn_factor[56][4] = 0.5;
-        spawn_factor[64][4] = 0.525;
+        f[32][2] = 0.5;
+        f[40][2] = 0.5;
+        f[48][2] = 0.5;
+        f[56][2] = 0.55;
+        f[64][2] = 0.675;
+
+        f[32][4] = 0.325;
+        f[40][4] = 0.375;
+        f[48][4] = 0.5;
+        f[56][4] = 0.5;
+        f[64][4] = 0.525;
+
+        spawn_factor = f[game.game_map->width][game.players.size()];
     }
 
     for (;;) {
@@ -141,9 +145,11 @@ int main(int argc, char* argv[]) {
                 if (game.players.size() == 4 &&
                     game_map->calculate_distance(p, closest_base[p])) {
                     targets.erase(p);
+                    is_vis[p] = true;
                     for (Position pp :
                          it.second->position.get_surrounding_cardinals()) {
                         targets.erase(game_map->normalize(pp));
+                        is_vis[game_map->normalize(pp)] = true;
                     }
                 }
             }
@@ -154,7 +160,7 @@ int main(int argc, char* argv[]) {
         vector<shared_ptr<Ship>> returners, explorers;
 
         double return_cutoff = 0.95;
-        if (game.turn_number <= MAX_TURNS * 0.75) return_cutoff = 0.75;
+        if (game.turn_number <= MAX_TURNS * spawn_factor) return_cutoff = 0.75;
 
         for (auto& it : me->ships) {
             shared_ptr<Ship> ship = it.second;
@@ -341,9 +347,9 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        double f = spawn_factor[game_map->width][game.players.size()];
         if (me->halite >= SHIP_COST && !is_vis[me->shipyard->position] &&
-            (game.turn_number <= MAX_TURNS * f || me->ships.size() < ship_lo)) {
+            (game.turn_number <= MAX_TURNS * spawn_factor ||
+             me->ships.size() < ship_lo)) {
             command_queue.push_back(me->shipyard->spawn());
         }
 

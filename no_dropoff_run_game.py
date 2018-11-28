@@ -6,10 +6,8 @@ os.system('set -e')
 os.system('cmake .')
 os.system('make')
 
-bots = ["./MyBot", "./bots/MyBot_Nov6InspireNoDropoff", "./bots/MyBot_Nov6InspireNoDropoff", "./bots/MyBot_Nov6InspireNoDropoff"]
-# bots = ["./MyBot", "./bots/MyBot_Nov6InspireNoDropoff"]
-# shuffle(bots)
+bots = ["./MyBot", "./bots/MyBot_Nov27HungarianNoDropoff", "./bots/MyBot_Nov27HungarianNoDropoff", "./bots/MyBot_Nov27HungarianNoDropoff"]
 
 seed = randint(0, (1 << 31) - 1) if len(sys.argv) == 1 else sys.argv[1]
 
-os.system('./halite --replay-directory replays/ -vvv --seed {} {}'.format(seed, ' '.join(bots)))
+os.system('./halite --replay-directory replays/ -vvv --seed {} {}'.format(seed, ' '.join(bots[0:2])))
