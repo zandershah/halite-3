@@ -64,13 +64,13 @@ int main(int argc, char* argv[]) {
 
         f[32][2] = 0.5;
         f[40][2] = 0.5;
-        f[48][2] = 0.5;
+        f[48][2] = 0.525;
         f[56][2] = 0.55;
         f[64][2] = 0.675;
 
         f[32][4] = 0.325;
         f[40][4] = 0.375;
-        f[48][4] = 0.5;
+        f[48][4] = 0.475;
         f[56][4] = 0.5;
         f[64][4] = 0.525;
 
@@ -88,6 +88,10 @@ int main(int argc, char* argv[]) {
         unordered_map<Position, Position> closest_base;
         unordered_map<Position, bool> inspired;
         unordered_map<Position, bool> is_vis;
+
+        vector<Command> command_queue;
+
+        // TODO: Dropoff.
 
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
@@ -156,7 +160,6 @@ int main(int argc, char* argv[]) {
         }
 
         log::log("Tasks.");
-        vector<Command> command_queue;
         vector<shared_ptr<Ship>> returners, explorers;
 
         double return_cutoff = 0.95;
@@ -188,7 +191,6 @@ int main(int argc, char* argv[]) {
                     break;
             }
 
-            // TODO: Dropoff.
             // TODO: Fix stuck.
             if (stuck(ship) && tasks[id] != HARD_RETURN) {
                 command_queue.push_back(ship->stay_still());
@@ -197,7 +199,7 @@ int main(int argc, char* argv[]) {
                 continue;
             }
 
-            // Hardcoded force return.
+            // Hard return.
             if (tasks[id] == HARD_RETURN && closest_base_dist <= 1) {
                 for (Direction d : ALL_CARDINALS) {
                     if (ship->position.directional_offset(d) ==
@@ -293,6 +295,8 @@ int main(int argc, char* argv[]) {
             }
 
             // Fill cost matrix. Moves in the optimal direction have low cost.
+            // TODO: Random walks or another technique to decide which of the
+            // two moves.
             vector<vector<double>> cost_matrix;
             for (auto ship : explorers) {
                 vector<double> cost(move_space.size(),
@@ -303,7 +307,11 @@ int main(int argc, char* argv[]) {
                     pp = game_map->normalize(pp);
                     if (!is_vis[pp]) cost[move_indices[pp]] = 1e5;
                 }
-                if (!is_vis[p]) cost[move_indices[p]] = 1e3;
+
+                if (!is_vis[p]) {
+                    cost[move_indices[p]] =
+                        tasks[ship->id] == EXPLORE ? 1e3 : 1e7;
+                }
 
                 for (Direction d : game_map->get_unsafe_moves(p, ship->next)) {
                     Position pp = game_map->normalize(p.directional_offset(d));
@@ -313,6 +321,7 @@ int main(int argc, char* argv[]) {
                 cost_matrix.push_back(move(cost));
             }
 
+            // Solve and execute moves.
             if (!explorers.empty()) {
                 vector<int> assignment(explorers.size());
                 HungarianAlgorithm ha;
