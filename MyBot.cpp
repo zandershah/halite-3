@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
             }
 
             const int close =
-                game_map->width / (game.players.size() == 2 ? 3 : 4);
+                game_map->width / (game.players.size() == 2 ? 3 : 6);
 
             bool local_dropoffs = false;
             for (auto& player : game.players) {
