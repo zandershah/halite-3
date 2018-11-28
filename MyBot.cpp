@@ -62,8 +62,8 @@ int main(int argc, char* argv[]) {
     {
         unordered_map<int, unordered_map<int, double>> f;
 
-        f[32][2] = 0.5;
-        f[40][2] = 0.5;
+        f[32][2] = 0.35;
+        f[40][2] = 0.45;
         f[48][2] = 0.525;
         f[56][2] = 0.55;
         f[64][2] = 0.625;
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
         f[40][4] = 0.375;
         f[48][4] = 0.475;
         f[56][4] = 0.475;
-        f[64][4] = 0.525;
+        f[64][4] = 0.6;
 
         spawn_factor = f[game.game_map->width][game.players.size()];
     }
