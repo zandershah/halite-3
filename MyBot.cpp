@@ -91,7 +91,58 @@ int main(int argc, char* argv[]) {
 
         vector<Command> command_queue;
 
-        // TODO: Dropoff.
+        // Dropoff.
+        for (auto it = me->ships.begin(); it != me->ships.end();) {
+            auto ship = it->second;
+
+            Halite halite_around = 0;
+            for (vector<MapCell>& cells : game_map->cells) {
+                for (MapCell cell : cells) {
+                    int d = game_map->calculate_distance(ship->position,
+                                                         cell.position);
+                    if (d <= game_map->width / 8) halite_around += cell.halite;
+                }
+            }
+
+            const int close =
+                game_map->width / (game.players.size() == 2 ? 3 : 4);
+
+            bool local_dropoffs = false;
+            for (auto& player : game.players) {
+                int d = game_map->calculate_distance(
+                    ship->position, player->shipyard->position);
+                local_dropoffs |= d <= close;
+                for (auto& it : player->dropoffs) {
+                    d = game_map->calculate_distance(ship->position,
+                                                     it.second->position);
+                    local_dropoffs |= d <= close;
+                }
+            }
+
+            const Halite delta =
+                DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
+
+            bool ideal_dropoff =
+                halite_around >= MAX_HALITE * game_map->width / 2;
+            ideal_dropoff &= me->halite >= delta;
+            ideal_dropoff &= !local_dropoffs;
+            ideal_dropoff &= game.turn_number <= MAX_TURNS * 0.666;
+
+            ideal_dropoff |= delta <= 0;
+
+            if (ideal_dropoff) {
+                me->halite -= delta;
+                command_queue.push_back(ship->make_dropoff());
+                game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
+                    game.my_id, -ship->id, ship->position.x, ship->position.y);
+
+                log::log("Dropoff created at", ship->position);
+
+                me->ships.erase(it++);
+            } else {
+                ++it;
+            }
+        }
 
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
@@ -222,7 +273,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // TODO: Limit the number of targets if TLE.
         log::log("Explorer cost matrix.");
         vector<vector<double>> cost_matrix;
         for (auto& ship : explorers) {
@@ -247,7 +297,7 @@ int main(int argc, char* argv[]) {
 
                 double rate = halite_profit_estimate / max(1.0, turn_estimate);
                 // TODO: Fix.
-                cost.push_back(-rate + 1e3);
+                cost.push_back(-rate + 5e3);
             }
             cost_matrix.push_back(move(cost));
         }
@@ -295,8 +345,6 @@ int main(int argc, char* argv[]) {
             }
 
             // Fill cost matrix. Moves in the optimal direction have low cost.
-            // TODO: Random walks or another technique to decide which of the
-            // two moves.
             vector<vector<double>> cost_matrix;
             for (auto ship : explorers) {
                 vector<double> cost(move_space.size(),
