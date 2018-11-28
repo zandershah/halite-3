@@ -66,12 +66,12 @@ int main(int argc, char* argv[]) {
         f[40][2] = 0.5;
         f[48][2] = 0.525;
         f[56][2] = 0.55;
-        f[64][2] = 0.675;
+        f[64][2] = 0.625;
 
-        f[32][4] = 0.325;
+        f[32][4] = 0.3;
         f[40][4] = 0.375;
         f[48][4] = 0.475;
-        f[56][4] = 0.5;
+        f[56][4] = 0.475;
         f[64][4] = 0.525;
 
         spawn_factor = f[game.game_map->width][game.players.size()];
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
                 DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
 
             bool ideal_dropoff =
-                halite_around >= MAX_HALITE * game_map->width / 2;
+                halite_around >= MAX_HALITE * game_map->width / 3;
             ideal_dropoff &= me->halite >= delta;
             ideal_dropoff &= !local_dropoffs;
             ideal_dropoff &= game.turn_number <= MAX_TURNS * 0.666;
@@ -274,34 +274,35 @@ int main(int argc, char* argv[]) {
         }
 
         log::log("Explorer cost matrix.");
-        vector<vector<double>> cost_matrix;
-        for (auto& ship : explorers) {
-            unordered_map<Position, Halite> dist;
-            vector<Position> source = {ship->position};
-            dijkstras(dist, source);
-
-            vector<double> cost;
-            for (Position p : targets) {
-                MapCell* map_cell = game_map->at(p);
-
-                int d = game_map->calculate_distance(ship->position, p);
-                double turn_estimate =
-                    d + game_map->calculate_distance(p, closest_base[p]);
-
-                Halite halite_profit_estimate =
-                    map_cell->halite + dist[p] - cost_to_base[p];
-                if (d <= INSPIRATION_RADIUS && inspired[p]) {
-                    halite_profit_estimate +=
-                        INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
-                }
-
-                double rate = halite_profit_estimate / max(1.0, turn_estimate);
-                // TODO: Fix.
-                cost.push_back(-rate + 5e3);
-            }
-            cost_matrix.push_back(move(cost));
-        }
         if (!explorers.empty()) {
+            vector<vector<double>> cost_matrix;
+            for (auto& ship : explorers) {
+                unordered_map<Position, Halite> dist;
+                vector<Position> source = {ship->position};
+                dijkstras(dist, source);
+
+                vector<double> cost;
+                for (Position p : targets) {
+                    MapCell* map_cell = game_map->at(p);
+
+                    int d = game_map->calculate_distance(ship->position, p);
+                    double turn_estimate =
+                        d + game_map->calculate_distance(p, closest_base[p]);
+
+                    Halite halite_profit_estimate =
+                        map_cell->halite + dist[p] - cost_to_base[p];
+                    if (d <= INSPIRATION_RADIUS && inspired[p]) {
+                        halite_profit_estimate +=
+                            INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
+                    }
+
+                    double rate = halite_profit_estimate / max(1.0, turn_estimate);
+                    // TODO: Fix.
+                    cost.push_back(-rate + 5e3);
+                }
+                cost_matrix.push_back(move(cost));
+            }
+
             vector<int> assignment(explorers.size());
             HungarianAlgorithm ha;
             ha.Solve(cost_matrix, assignment);
@@ -317,7 +318,7 @@ int main(int argc, char* argv[]) {
         }
 
         log::log("Move cost matrix.");
-        {
+        if (!explorers.empty() || !returners.empty()) {
             explorers.insert(explorers.end(), returners.begin(),
                              returners.end());
 
@@ -370,24 +371,22 @@ int main(int argc, char* argv[]) {
             }
 
             // Solve and execute moves.
-            if (!explorers.empty()) {
-                vector<int> assignment(explorers.size());
-                HungarianAlgorithm ha;
-                ha.Solve(cost_matrix, assignment);
+            vector<int> assignment(explorers.size());
+            HungarianAlgorithm ha;
+            ha.Solve(cost_matrix, assignment);
 
-                for (size_t i = 0; i < assignment.size(); ++i) {
-                    if (explorers[i]->position == move_space[assignment[i]]) {
-                        is_vis[explorers[i]->position] = true;
-                        command_queue.push_back(explorers[i]->stay_still());
-                    }
-                    for (Direction d : ALL_CARDINALS) {
-                        Position pp = game_map->normalize(
-                            explorers[i]->position.directional_offset(d));
-                        if (pp == move_space[assignment[i]]) {
-                            command_queue.push_back(explorers[i]->move(d));
-                            is_vis[pp] = true;
-                            break;
-                        }
+            for (size_t i = 0; i < assignment.size(); ++i) {
+                if (explorers[i]->position == move_space[assignment[i]]) {
+                    is_vis[explorers[i]->position] = true;
+                    command_queue.push_back(explorers[i]->stay_still());
+                }
+                for (Direction d : ALL_CARDINALS) {
+                    Position pp = game_map->normalize(
+                        explorers[i]->position.directional_offset(d));
+                    if (pp == move_space[assignment[i]]) {
+                        command_queue.push_back(explorers[i]->move(d));
+                        is_vis[pp] = true;
+                        break;
                     }
                 }
             }
