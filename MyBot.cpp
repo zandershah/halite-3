@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
         vector<Command> command_queue;
 
         // Dropoff.
-#if 0
+#if 1
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
 
@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
                 for (MapCell cell : cells) {
                     int d = game_map->calculate_distance(ship->position,
                                                          cell.position);
-                    if (d <= game_map->width / 8) halite_around += cell.halite;
+                    if (d <= game_map->width / 6) halite_around += cell.halite;
                 }
             }
 
@@ -210,9 +210,9 @@ int main(int argc, char* argv[]) {
             if (player->id == me->id) continue;
             for (auto& it : player->ships) {
                 Position p = it.second->position;
-                if ((game.players.size() == 2 && it.second->halite <= 250) ||
-                    (game.players.size() == 4 &&
-                     game_map->calculate_distance(p, closest_base[p]))) {
+                if (!game_map->calculate_distance(p, closest_base[p])) continue;
+                if ((game.players.size() == 2 && it.second->halite <= 750) ||
+                    game.players.size() == 4) {
                     targets.erase(p);
                     is_vis[p] = true;
                     for (Position pp :
