@@ -374,7 +374,6 @@ int main(int argc, char* argv[]) {
             for (auto ship : explorers) {
                 vector<double> cost(move_space.size(),
                                     numeric_limits<double>::max());
-                Position p = ship->position;
 
                 position_map<double> surrounding_cost = random_walk(ship);
                 for (auto& it : surrounding_cost) {
