@@ -72,12 +72,6 @@ struct GameMap {
                                                      : Direction::SOUTH);
         }
 
-        std::sort(possible_moves.begin(), possible_moves.end(),
-                  [&](Direction u, Direction v) {
-                      return at(source.directional_offset(u))->halite >
-                             at(source.directional_offset(v))->halite;
-                  });
-
         return possible_moves;
     }
 

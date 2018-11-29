@@ -8,11 +8,14 @@ using namespace std;
 using namespace hlt;
 using namespace constants;
 
+template <typename V>
+using position_map = unordered_map<Position, V>;
+
 // Fluorine JSON.
 stringstream flog;
-void message(int t, int x, int y, string c, string m = "") {
-    flog << "{\"t\": " << t << ", \"x\": " << x << ", \"y\": " << y
-         << ", \"color\": \"" << c << "\"},\n";
+void message(int t, Position p, string c) {
+    flog << "{\"t\": " << t << ", \"x\": " << p.x << ", \"y\": " << p.y
+         << ", \"color\": \"" << c << "\"}," << endl;
 }
 
 Game game;
@@ -25,8 +28,7 @@ inline bool stuck(shared_ptr<Ship> ship) {
     return ship->halite < left / MOVE_COST_RATIO || left >= halite_cutoff;
 }
 
-void dijkstras(unordered_map<Position, Halite>& dist,
-               vector<Position>& sources) {
+void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     for (vector<MapCell>& cell_row : game.game_map->cells) {
         for (MapCell& map_cell : cell_row) {
             dist[map_cell.position] = numeric_limits<Halite>::max();
@@ -51,11 +53,26 @@ void dijkstras(unordered_map<Position, Halite>& dist,
     }
 }
 
+// Walks from |ship->position| to |ship->next| and returns edge weights for the
+// next move.
+position_map<double> random_walk(shared_ptr<Ship> ship) {
+    position_map<double> surrounding_cost;
+
+    Position p = ship->position;
+    for (Position pp : p.get_surrounding_cardinals()) {
+        pp = game.game_map->normalize(pp);
+        surrounding_cost[pp] = 1e5;
+    }
+
+    surrounding_cost[p] = tasks[ship->id] == EXPLORE ? 1e3 : 1e7;
+
+    for (Direction d : game.game_map->get_unsafe_moves(p, ship->next))
+        surrounding_cost[game.game_map->normalize(p.directional_offset(d))] = 1;
+
+    return surrounding_cost;
+}
+
 int main(int argc, char* argv[]) {
-    // At this point "game" variable is populated with initial map data.
-    // This is a good place to do computationally expensive start-up
-    // pre-processing. As soon as you call "ready" function below, the 2
-    // second per turn timer will start.
     game.ready("ZanZanBot");
 
     double spawn_factor;
@@ -84,14 +101,15 @@ int main(int argc, char* argv[]) {
         shared_ptr<Player> me = game.me;
         unique_ptr<GameMap>& game_map = game.game_map;
 
-        unordered_map<Position, Halite> cost_to_base;
-        unordered_map<Position, Position> closest_base;
-        unordered_map<Position, bool> inspired;
-        unordered_map<Position, bool> is_vis;
+        position_map<Halite> cost_to_base;
+        position_map<Position> closest_base;
+        position_map<bool> inspired;
+        position_map<bool> is_vis;
 
         vector<Command> command_queue;
 
         // Dropoff.
+#if 0
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
 
@@ -143,6 +161,7 @@ int main(int argc, char* argv[]) {
                 ++it;
             }
         }
+#endif
 
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
@@ -277,7 +296,7 @@ int main(int argc, char* argv[]) {
         if (!explorers.empty()) {
             vector<vector<double>> cost_matrix;
             for (auto& ship : explorers) {
-                unordered_map<Position, Halite> dist;
+                position_map<Halite> dist;
                 vector<Position> source = {ship->position};
                 dijkstras(dist, source);
 
@@ -296,7 +315,8 @@ int main(int argc, char* argv[]) {
                             INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
                     }
 
-                    double rate = halite_profit_estimate / max(1.0, turn_estimate);
+                    double rate =
+                        halite_profit_estimate / max(1.0, turn_estimate);
                     // TODO: Fix.
                     cost.push_back(-rate + 5e3);
                 }
@@ -314,9 +334,11 @@ int main(int argc, char* argv[]) {
                 log::log("ID:", explorers[i]->id,
                          "LIVES:", explorers[i]->position,
                          "GOAL:", explorers[i]->next);
+                message(game.turn_number, explorers[i]->next, "purple");
             }
         }
 
+        // TODO: Random walk to determine edge weights.
         log::log("Move cost matrix.");
         if (!explorers.empty() || !returners.empty()) {
             explorers.insert(explorers.end(), returners.begin(),
@@ -340,7 +362,7 @@ int main(int argc, char* argv[]) {
             vector<Position> move_space(local_targets.begin(),
                                         local_targets.end());
 
-            unordered_map<Position, int> move_indices;
+            position_map<int> move_indices;
             for (size_t i = 0; i < move_space.size(); ++i) {
                 move_indices[move_space[i]] = i;
             }
@@ -352,19 +374,10 @@ int main(int argc, char* argv[]) {
                                     numeric_limits<double>::max());
                 Position p = ship->position;
 
-                for (Position pp : p.get_surrounding_cardinals()) {
-                    pp = game_map->normalize(pp);
-                    if (!is_vis[pp]) cost[move_indices[pp]] = 1e5;
-                }
-
-                if (!is_vis[p]) {
-                    cost[move_indices[p]] =
-                        tasks[ship->id] == EXPLORE ? 1e3 : 1e7;
-                }
-
-                for (Direction d : game_map->get_unsafe_moves(p, ship->next)) {
-                    Position pp = game_map->normalize(p.directional_offset(d));
-                    if (!is_vis[pp]) cost[move_indices[pp]] = 1;
+                position_map<double> surrounding_cost = random_walk(ship);
+                for (auto& it : surrounding_cost) {
+                    if (!is_vis[it.first])
+                        cost[move_indices[it.first]] = it.second;
                 }
 
                 cost_matrix.push_back(move(cost));
