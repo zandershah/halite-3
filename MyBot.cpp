@@ -22,12 +22,6 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 Halite halite_cutoff;
 
-inline bool stuck(shared_ptr<Ship> ship) {
-    const Halite left = game.game_map->at(ship)->halite;
-    if (!left || ship->is_full()) return false;
-    return ship->halite < left / MOVE_COST_RATIO || left >= halite_cutoff;
-}
-
 void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     for (vector<MapCell>& cell_row : game.game_map->cells) {
         for (MapCell& map_cell : cell_row) {
@@ -73,7 +67,7 @@ position_map<double> random_walk(shared_ptr<Ship> ship) {
 }
 
 int main(int argc, char* argv[]) {
-    game.ready("ZanZanBot");
+    game.ready("HaoHaoBot");
 
     double spawn_factor;
     {
@@ -216,8 +210,9 @@ int main(int argc, char* argv[]) {
             if (player->id == me->id) continue;
             for (auto& it : player->ships) {
                 Position p = it.second->position;
-                if (game.players.size() == 4 &&
-                    game_map->calculate_distance(p, closest_base[p])) {
+                if ((game.players.size() == 2 && it.second->halite <= 250) ||
+                    (game.players.size() == 4 &&
+                     game_map->calculate_distance(p, closest_base[p]))) {
                     targets.erase(p);
                     is_vis[p] = true;
                     for (Position pp :
@@ -228,6 +223,13 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+
+        auto stuck = [&](shared_ptr<Ship> ship) {
+            const Halite left = game_map->at(ship)->halite;
+            if (!left || ship->is_full()) return false;
+            return ship->halite < left / MOVE_COST_RATIO ||
+                   left >= halite_cutoff;
+        };
 
         log::log("Tasks.");
         vector<shared_ptr<Ship>> returners, explorers;
