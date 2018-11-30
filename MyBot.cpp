@@ -102,6 +102,13 @@ int main(int argc, char* argv[]) {
 
         vector<Command> command_queue;
 
+        auto stuck = [&](shared_ptr<Ship> ship) {
+            const Halite left = game_map->at(ship)->halite;
+            if (!left || ship->is_full()) return false;
+            return ship->halite < left / MOVE_COST_RATIO ||
+                   left >= halite_cutoff;
+        };
+
         // Dropoff.
 #if 1
         for (auto it = me->ships.begin(); it != me->ships.end();) {
@@ -223,13 +230,6 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-
-        auto stuck = [&](shared_ptr<Ship> ship) {
-            const Halite left = game_map->at(ship)->halite;
-            if (!left || ship->is_full()) return false;
-            return ship->halite < left / MOVE_COST_RATIO ||
-                   left >= halite_cutoff;
-        };
 
         log::log("Tasks.");
         vector<shared_ptr<Ship>> returners, explorers;
