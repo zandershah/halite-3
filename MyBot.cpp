@@ -20,7 +20,6 @@ void message(int t, Position p, string c) {
 
 Game game;
 unordered_map<EntityId, Task> tasks;
-Halite halite_cutoff;
 
 void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     for (vector<MapCell>& cell_row : game.game_map->cells) {
@@ -88,6 +87,8 @@ int main(int argc, char* argv[]) {
         spawn_factor = f[game.game_map->width][game.players.size()];
     }
 
+    bool started_hard_return = false;
+
     for (;;) {
         auto begin = chrono::steady_clock::now();
 
@@ -100,6 +101,9 @@ int main(int argc, char* argv[]) {
         position_map<bool> inspired;
         position_map<bool> is_vis;
 
+        bool want_dropoff = false;
+        Halite halite_cutoff;
+
         vector<Command> command_queue;
 
         auto stuck = [&](shared_ptr<Ship> ship) {
@@ -109,11 +113,8 @@ int main(int argc, char* argv[]) {
                    left >= halite_cutoff;
         };
 
-        // Dropoff.
-#if 1
-        for (auto it = me->ships.begin(); it != me->ships.end();) {
-            auto ship = it->second;
-
+        // Does not check cost.
+        auto ideal_dropoff = [&](shared_ptr<Ship> ship) {
             Halite halite_around = 0;
             for (vector<MapCell>& cells : game_map->cells) {
                 for (MapCell cell : cells) {
@@ -123,8 +124,7 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            const int close =
-                game_map->width / (game.players.size() == 2 ? 3 : 6);
+            const int close = game_map->width / 3;
 
             bool local_dropoffs = false;
             for (auto& player : game.players) {
@@ -138,18 +138,28 @@ int main(int argc, char* argv[]) {
                 }
             }
 
+            bool ideal = halite_around >= MAX_HALITE * game_map->width / 3;
+            ideal &= !local_dropoffs;
+            ideal &= game.turn_number <= MAX_TURNS * 0.666;
+            return ideal;
+        };
+
+        // Dropoff.
+#if 1
+        for (auto it = me->ships.begin(); it != me->ships.end();) {
+            auto ship = it->second;
             const Halite delta =
                 DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
 
-            bool ideal_dropoff =
-                halite_around >= MAX_HALITE * game_map->width / 3;
-            ideal_dropoff &= me->halite >= delta;
-            ideal_dropoff &= !local_dropoffs;
-            ideal_dropoff &= game.turn_number <= MAX_TURNS * 0.666;
+            if (ideal_dropoff(ship)) {
+                // We want a dropoff but too poor.
+                // TODO: This flow could be cleaner.
+                if (delta > me->halite) {
+                    want_dropoff = true;
+                    ++it;
+                    continue;
+                }
 
-            ideal_dropoff |= delta <= 0;
-
-            if (ideal_dropoff) {
                 me->halite -= delta;
                 command_queue.push_back(ship->make_dropoff());
                 game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
@@ -218,8 +228,7 @@ int main(int argc, char* argv[]) {
             for (auto& it : player->ships) {
                 Position p = it.second->position;
                 if (!game_map->calculate_distance(p, closest_base[p])) continue;
-                if ((game.players.size() == 2 && it.second->halite <= 750) ||
-                    game.players.size() == 4) {
+                if (game.players.size() == 4) {
                     targets.erase(p);
                     is_vis[p] = true;
                     for (Position pp :
@@ -247,10 +256,13 @@ int main(int argc, char* argv[]) {
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
+            int return_estimate =
+                game.turn_number + closest_base_dist + me->ships.size() * 0.3;
             // TODO: Dry run of return.
-            if (game.turn_number + closest_base_dist + me->ships.size() * 0.3 >=
-                MAX_TURNS)
+            if (!halite_cutoff || return_estimate >= MAX_TURNS) {
                 tasks[id] = HARD_RETURN;
+                started_hard_return = true;
+            }
 
             switch (tasks[id]) {
                 case EXPLORE:
@@ -418,6 +430,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (me->halite >= SHIP_COST && !is_vis[me->shipyard->position] &&
+            !want_dropoff && !started_hard_return &&
             (game.turn_number <= MAX_TURNS * spawn_factor ||
              me->ships.size() < ship_lo)) {
             command_queue.push_back(me->shipyard->spawn());
