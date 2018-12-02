@@ -113,6 +113,7 @@ int main(int argc, char* argv[]) {
                    left >= halite_cutoff;
         };
 
+#if 1
         // Does not check cost.
         auto ideal_dropoff = [&](const Position& p) {
             const int close = game_map->width / 4;
@@ -143,7 +144,6 @@ int main(int argc, char* argv[]) {
         };
 
         // Dropoff.
-#if 1
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
             const Halite delta =

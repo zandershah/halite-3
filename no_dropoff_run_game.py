@@ -6,7 +6,7 @@ os.system('set -e')
 os.system('cmake .')
 os.system('make')
 
-bots = ["./MyBot", "./bots/MyBot_Nov27HungarianNoDropoff", "./bots/MyBot_Nov27HungarianNoDropoff", "./bots/MyBot_Nov27HungarianNoDropoff"]
+bots = ["./MyBot", "./bots/MyBot_Dec1NoDropoff", "./bots/MyBot_Dec1NoDropoff", "./bots/MyBot_Dec1NoDropoff"]
 # shuffle(bots)
 # bots = bots[0:2]
 
