@@ -82,7 +82,7 @@ int main(int argc, char* argv[]) {
         f[40][4] = 0.375;
         f[48][4] = 0.475;
         f[56][4] = 0.475;
-        f[64][4] = 0.6;
+        f[64][4] = 0.5;
 
         spawn_factor = f[game.game_map->width][game.players.size()];
     }
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
 
         // Does not check cost.
         auto ideal_dropoff = [&](shared_ptr<Ship> ship) {
-            const int close = game_map->width / 4;
+            const int close = game_map->width / 3;
 
             Halite halite_around = 0;
             for (vector<MapCell>& cells : game_map->cells) {
@@ -322,14 +322,12 @@ int main(int argc, char* argv[]) {
                     double dd =
                         sqrt(game_map->calculate_distance(p, closest_base[p]));
 
-                    Halite halite_profit_estimate =
+                    Halite profit =
                         map_cell->halite + dist[p] - cost_to_base[p];
-                    if (d <= INSPIRATION_RADIUS && inspired[p]) {
-                        halite_profit_estimate +=
-                            INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
-                    }
+                    if (d <= INSPIRATION_RADIUS && inspired[p])
+                        profit += INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
 
-                    double rate = halite_profit_estimate / max(1.0, d + dd);
+                    double rate = profit / max(1.0, pow(d + dd, 2));
                     // TODO: Fix.
                     cost.push_back(-rate + 5e3);
                 }
@@ -418,11 +416,12 @@ int main(int argc, char* argv[]) {
         }
 
         log::log("Spawn ships.");
-        size_t ship_lo = 0;
+        size_t ship_lo = 0, ship_hi = numeric_limits<short>::max();
         // TODO: Smarter counter of mid-game aggression.
         if (game.turn_number <= MAX_TURNS * 0.75) {
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
+                ship_hi = min(ship_hi, player->ships.size());
                 ship_lo += player->ships.size();
             }
             ship_lo /= (game.players.size() - 1);
@@ -430,6 +429,7 @@ int main(int argc, char* argv[]) {
 
         if (me->halite >= SHIP_COST && !is_vis[me->shipyard->position] &&
             want_dropoff <= game.turn_number - 5 && !started_hard_return &&
+            me->ships.size() <= ship_hi + 5 &&
             (game.turn_number <= MAX_TURNS * spawn_factor ||
              me->ships.size() < ship_lo)) {
             command_queue.push_back(me->shipyard->spawn());
