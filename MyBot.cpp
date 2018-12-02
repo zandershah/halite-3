@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
         position_map<bool> inspired;
         position_map<bool> is_vis;
 
-        bool want_dropoff = false;
+        int want_dropoff = numeric_limits<int>::min();
         Halite halite_cutoff;
 
         vector<Command> command_queue;
@@ -115,16 +115,16 @@ int main(int argc, char* argv[]) {
 
         // Does not check cost.
         auto ideal_dropoff = [&](shared_ptr<Ship> ship) {
+            const int close = game_map->width / 4;
+
             Halite halite_around = 0;
             for (vector<MapCell>& cells : game_map->cells) {
                 for (MapCell cell : cells) {
                     int d = game_map->calculate_distance(ship->position,
                                                          cell.position);
-                    if (d <= game_map->width / 6) halite_around += cell.halite;
+                    if (d <= close) halite_around += cell.halite;
                 }
             }
-
-            const int close = game_map->width / 3;
 
             bool local_dropoffs = false;
             for (auto& player : game.players) {
@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            bool ideal = halite_around >= MAX_HALITE * game_map->width / 3;
+            bool ideal = halite_around >= MAX_HALITE * pow(close, 2) / 3;
             ideal &= !local_dropoffs;
             ideal &= game.turn_number <= MAX_TURNS * 0.666;
             return ideal;
@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
                 // We want a dropoff but too poor.
                 // TODO: This flow could be cleaner.
                 if (delta > me->halite) {
-                    want_dropoff = true;
+                    want_dropoff = game.turn_number;
                     ++it;
                     continue;
                 }
@@ -318,9 +318,9 @@ int main(int argc, char* argv[]) {
                 for (Position p : targets) {
                     MapCell* map_cell = game_map->at(p);
 
-                    int d = game_map->calculate_distance(ship->position, p);
-                    double turn_estimate =
-                        d + game_map->calculate_distance(p, closest_base[p]);
+                    double d = game_map->calculate_distance(ship->position, p);
+                    double dd =
+                        sqrt(game_map->calculate_distance(p, closest_base[p]));
 
                     Halite halite_profit_estimate =
                         map_cell->halite + dist[p] - cost_to_base[p];
@@ -329,8 +329,7 @@ int main(int argc, char* argv[]) {
                             INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
                     }
 
-                    double rate =
-                        halite_profit_estimate / max(1.0, turn_estimate);
+                    double rate = halite_profit_estimate / max(1.0, d + dd);
                     // TODO: Fix.
                     cost.push_back(-rate + 5e3);
                 }
@@ -422,15 +421,15 @@ int main(int argc, char* argv[]) {
         size_t ship_lo = 0;
         // TODO: Smarter counter of mid-game aggression.
         if (game.turn_number <= MAX_TURNS * 0.75) {
-            ship_lo = numeric_limits<size_t>::max();
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
-                ship_lo = min(ship_lo, player->ships.size());
+                ship_lo += player->ships.size();
             }
+            ship_lo /= (game.players.size() - 1);
         }
 
         if (me->halite >= SHIP_COST && !is_vis[me->shipyard->position] &&
-            !want_dropoff && !started_hard_return &&
+            want_dropoff <= game.turn_number - 5 && !started_hard_return &&
             (game.turn_number <= MAX_TURNS * spawn_factor ||
              me->ships.size() < ship_lo)) {
             command_queue.push_back(me->shipyard->spawn());
