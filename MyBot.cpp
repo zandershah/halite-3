@@ -114,31 +114,29 @@ int main(int argc, char* argv[]) {
         };
 
         // Does not check cost.
-        auto ideal_dropoff = [&](shared_ptr<Ship> ship) {
-            const int close = game_map->width / 3;
+        auto ideal_dropoff = [&](const Position& p) {
+            const int close = game_map->width / 4;
 
             Halite halite_around = 0;
             for (vector<MapCell>& cells : game_map->cells) {
                 for (MapCell cell : cells) {
-                    int d = game_map->calculate_distance(ship->position,
-                                                         cell.position);
+                    int d = game_map->calculate_distance(p, cell.position);
                     if (d <= close) halite_around += cell.halite;
                 }
             }
 
             bool local_dropoffs = false;
             for (auto& player : game.players) {
-                int d = game_map->calculate_distance(
-                    ship->position, player->shipyard->position);
+                int d =
+                    game_map->calculate_distance(p, player->shipyard->position);
                 local_dropoffs |= d <= close;
                 for (auto& it : player->dropoffs) {
-                    d = game_map->calculate_distance(ship->position,
-                                                     it.second->position);
+                    d = game_map->calculate_distance(p, it.second->position);
                     local_dropoffs |= d <= close;
                 }
             }
 
-            bool ideal = halite_around >= MAX_HALITE * pow(close, 2) / 3;
+            bool ideal = halite_around >= MAX_HALITE * pow(close, 2) / 4;
             ideal &= !local_dropoffs;
             ideal &= game.turn_number <= MAX_TURNS * 0.666;
             return ideal;
@@ -151,7 +149,7 @@ int main(int argc, char* argv[]) {
             const Halite delta =
                 DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
 
-            if (ideal_dropoff(ship)) {
+            if (ideal_dropoff(ship->position)) {
                 // We want a dropoff but too poor.
                 // TODO: This flow could be cleaner.
                 if (delta > me->halite) {
@@ -213,7 +211,7 @@ int main(int argc, char* argv[]) {
             }
         }
         sort(flat_halite.begin(), flat_halite.end());
-        halite_cutoff = flat_halite[flat_halite.size() * 2 / 4];
+        halite_cutoff = flat_halite[flat_halite.size() / 2];
 
         // Possible targets.
         set<Position> targets;
@@ -327,7 +325,7 @@ int main(int argc, char* argv[]) {
                     if (d <= INSPIRATION_RADIUS && inspired[p])
                         profit += INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
 
-                    double rate = profit / max(1.0, pow(d + dd, 2));
+                    double rate = profit / max(1.0, d + dd);
                     // TODO: Fix.
                     cost.push_back(-rate + 5e3);
                 }
@@ -345,7 +343,6 @@ int main(int argc, char* argv[]) {
                 log::log("ID:", explorers[i]->id,
                          "LIVES:", explorers[i]->position,
                          "GOAL:", explorers[i]->next);
-                message(game.turn_number, explorers[i]->next, "purple");
             }
         }
 
