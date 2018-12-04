@@ -7,6 +7,7 @@
 using namespace std;
 using namespace hlt;
 using namespace constants;
+using namespace chrono;
 
 template <typename V>
 using position_map = unordered_map<Position, V>;
@@ -46,9 +47,7 @@ void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     }
 }
 
-// Walks from |ship->position| to |ship->next| and returns edge weights for the
-// next move.
-position_map<double> random_walk(shared_ptr<Ship> ship) {
+position_map<double> generate_costs(shared_ptr<Ship> ship) {
     position_map<double> surrounding_cost;
 
     Position p = ship->position;
@@ -63,6 +62,60 @@ position_map<double> random_walk(shared_ptr<Ship> ship) {
         surrounding_cost[game.game_map->normalize(p.directional_offset(d))] = 1;
 
     return surrounding_cost;
+}
+
+position_map<pair<EntityId, double>> generate_ownage() {
+    position_map<pair<EntityId, double>> ownage;
+
+    size_t my_queued = 1 + game.me->dropoffs.size();
+
+    queue<Position> q;
+    for (auto& player : game.players) {
+        const pair<EntityId, double> owner(player->id, 0.0);
+
+        ownage[player->shipyard->position] = owner;
+        q.push(player->shipyard->position);
+        for (auto& it : player->dropoffs) {
+            ownage[it.second->position] = owner;
+            q.push(it.second->position);
+        }
+    }
+
+    while (!q.empty()) {
+        Position p = q.front();
+        auto& owner = ownage[p];
+        q.pop();
+
+        if (!my_queued) break;
+
+        my_queued -= owner.first == game.my_id;
+
+        for (Position pp : p.get_surrounding_cardinals()) {
+            pp = game.game_map->normalize(pp);
+
+            if (ownage.find(pp) == ownage.end()) {
+                ownage[pp] = make_pair(owner.first, owner.second + 1);
+                q.push(pp);
+
+                my_queued += owner.first == game.my_id;
+            } else if (owner.first != game.my_id &&
+                       owner.second + 1 == ownage[pp].second) {
+                ownage[pp].first = -1;
+            }
+        }
+    }
+
+    return ownage;
+}
+
+double evaluate_ownage(const position_map<pair<EntityId, double>>& ownage) {
+    double cost = 0.0;
+    for (auto& it : ownage) {
+        if (it.second.first != game.my_id) continue;
+        double d = max(1.0, it.second.second);
+        cost += game.game_map->at(it.first)->halite / pow(d, 4);
+    }
+    return cost;
 }
 
 int main(int argc, char* argv[]) {
@@ -90,7 +143,7 @@ int main(int argc, char* argv[]) {
     bool started_hard_return = false;
 
     for (;;) {
-        auto begin = chrono::steady_clock::now();
+        auto begin = steady_clock::now();
 
         game.update_frame();
         shared_ptr<Player> me = game.me;
@@ -106,71 +159,53 @@ int main(int argc, char* argv[]) {
 
         vector<Command> command_queue;
 
+        auto hard_stuck = [&](shared_ptr<Ship> ship) {
+            const Halite left = game_map->at(ship)->halite;
+            return ship->halite < left / MOVE_COST_RATIO;
+        };
         auto stuck = [&](shared_ptr<Ship> ship) {
             const Halite left = game_map->at(ship)->halite;
             if (!left || ship->is_full()) return false;
-            return ship->halite < left / MOVE_COST_RATIO ||
-                   left >= halite_cutoff;
+            return left >= halite_cutoff;
         };
 
-#if 1
-        // Does not check cost.
-        auto ideal_dropoff = [&](const Position& p) {
-            const int close = game_map->width / 4;
-
-            Halite halite_around = 0;
-            for (vector<MapCell>& cells : game_map->cells) {
-                for (MapCell cell : cells) {
-                    int d = game_map->calculate_distance(p, cell.position);
-                    if (d <= close) halite_around += cell.halite;
-                }
+        log::log("Evaluating dropoffs.");
+        auto ownage = generate_ownage();
+        const double ownage_cost = evaluate_ownage(ownage);
+        vector<Position> my_ownage;
+        for (auto& it : ownage) {
+            if (it.second.first != me->id ||
+                it.second.second < game_map->width / 6) {
+                continue;
             }
-
-            bool local_dropoffs = false;
-            for (auto& player : game.players) {
-                int d =
-                    game_map->calculate_distance(p, player->shipyard->position);
-                local_dropoffs |= d <= close;
-                for (auto& it : player->dropoffs) {
-                    d = game_map->calculate_distance(p, it.second->position);
-                    local_dropoffs |= d <= close;
-                }
-            }
-
-            bool ideal = halite_around >= MAX_HALITE * pow(close, 2) / 4;
-            ideal &= !local_dropoffs;
-            ideal &= game.turn_number <= MAX_TURNS * 0.666;
-            return ideal;
-        };
-
-        // Dropoff.
-        for (auto it = me->ships.begin(); it != me->ships.end();) {
-            auto ship = it->second;
-            const Halite delta =
-                DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
-
-            if (ideal_dropoff(ship->position)) {
-                // We want a dropoff but too poor.
-                // TODO: This flow could be cleaner.
-                if (delta > me->halite) {
-                    want_dropoff = game.turn_number;
-                    ++it;
-                    continue;
-                }
-
-                me->halite -= delta;
-                command_queue.push_back(ship->make_dropoff());
-                game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
-                    game.my_id, -ship->id, ship->position.x, ship->position.y);
-
-                log::log("Dropoff created at", ship->position);
-
-                me->ships.erase(it++);
-            } else {
-                ++it;
-            }
+            my_ownage.push_back(it.first);
         }
-#endif
+        // TODO: It would be better to find the best dropoff every 'n' squares
+        // and converge on the best.
+        sort(my_ownage.begin(), my_ownage.end(),
+             [&](const Position& u, const Position& v) {
+                 return game_map->at(u)->halite > game_map->at(v)->halite;
+             });
+
+        vector<pair<double, Position>> new_dropoffs;
+        for (size_t i = 0; i < my_ownage.size(); ++i) {
+            auto t = steady_clock::now();
+            if (i >= 50) break;
+            if (duration_cast<milliseconds>(t - begin).count() > 150) break;
+
+            // Attempt to build a dropoff.
+            me->dropoffs[-1] = make_shared<Dropoff>(me->id, -1, my_ownage[i].x,
+                                                    my_ownage[i].y);
+
+            auto dropoff_ownage = generate_ownage();
+            new_dropoffs.emplace_back(
+                evaluate_ownage(dropoff_ownage) - ownage_cost, my_ownage[i]);
+
+            me->dropoffs.erase(-1);
+        }
+        sort(new_dropoffs.begin(), new_dropoffs.end(),
+             greater<pair<double, Position>>());
+        // TODO: Do something with the dropoffs.
 
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
@@ -242,7 +277,6 @@ int main(int argc, char* argv[]) {
         vector<shared_ptr<Ship>> returners, explorers;
 
         double return_cutoff = 0.95;
-        if (game.turn_number <= MAX_TURNS * spawn_factor) return_cutoff = 0.75;
 
         for (auto& it : me->ships) {
             shared_ptr<Ship> ship = it.second;
@@ -274,7 +308,7 @@ int main(int argc, char* argv[]) {
             }
 
             // TODO: Fix stuck.
-            if (stuck(ship) && tasks[id] != HARD_RETURN) {
+            if (hard_stuck(ship) || (stuck(ship) && tasks[id] != HARD_RETURN)) {
                 command_queue.push_back(ship->stay_still());
                 targets.erase(ship->position);
                 is_vis[ship->position] = true;
@@ -320,12 +354,14 @@ int main(int argc, char* argv[]) {
                     double dd =
                         sqrt(game_map->calculate_distance(p, closest_base[p]));
 
-                    Halite profit =
-                        map_cell->halite + dist[p] - cost_to_base[p];
-                    if (d <= INSPIRATION_RADIUS && inspired[p])
+                    Halite profit = map_cell->halite + dist[p];
+                    if (inspired[p])
                         profit += INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
+                    profit = min(profit, MAX_HALITE - ship->halite) -
+                             cost_to_base[p];
 
                     double rate = profit / max(1.0, d + dd);
+
                     // TODO: Fix.
                     cost.push_back(-rate + 5e3);
                 }
@@ -375,13 +411,14 @@ int main(int argc, char* argv[]) {
                 move_indices[move_space[i]] = i;
             }
 
-            // Fill cost matrix. Moves in the optimal direction have low cost.
+            // Fill cost matrix. Moves in the optimal direction have low
+            // cost.
             vector<vector<double>> cost_matrix;
             for (auto ship : explorers) {
                 vector<double> cost(move_space.size(),
                                     numeric_limits<double>::max());
 
-                position_map<double> surrounding_cost = random_walk(ship);
+                position_map<double> surrounding_cost = generate_costs(ship);
                 for (auto& it : surrounding_cost) {
                     if (!is_vis[it.first])
                         cost[move_indices[it.first]] = it.second;
@@ -432,19 +469,17 @@ int main(int argc, char* argv[]) {
             command_queue.push_back(me->shipyard->spawn());
         }
 
-        if (game.turn_number == MAX_TURNS) {
+        if (game.turn_number == MAX_TURNS && game.my_id == 0) {
             log::log("Done!");
             ofstream fout;
-            fout.open("replays/_flog.json");
+            fout.open("replays/__flog.json");
             fout << "[\n" << flog.str();
             fout.close();
         }
 
         if (!game.end_turn(command_queue)) break;
 
-        auto end = chrono::steady_clock::now();
-        log::log(
-            "Millis: ",
-            chrono::duration_cast<chrono::milliseconds>(end - begin).count());
+        auto end = steady_clock::now();
+        log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
     }
 }
