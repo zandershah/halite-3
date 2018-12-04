@@ -199,13 +199,22 @@ int main(int argc, char* argv[]) {
 
             auto dropoff_ownage = generate_ownage();
             new_dropoffs.emplace_back(
-                evaluate_ownage(dropoff_ownage) - ownage_cost, my_ownage[i]);
+                evaluate_ownage(dropoff_ownage), my_ownage[i]);
 
             me->dropoffs.erase(-1);
         }
         sort(new_dropoffs.begin(), new_dropoffs.end(),
              greater<pair<double, Position>>());
         // TODO: Do something with the dropoffs.
+        log::log("Ownage", ownage_cost);
+        for (size_t i = 0; i < min(3ul, new_dropoffs.size()); ++i) {
+            double relative_ownage = (new_dropoffs[i].first + ownage_cost) / ownage_cost;
+            if (relative_ownage >= 20) {
+              log::log("Potential Ownage:", new_dropoffs[i].first);
+              log::log("Relative Ownage:", relative_ownage);
+              message(game.turn_number, new_dropoffs[i].second, "green");
+            }
+        }
 
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
