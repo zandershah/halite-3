@@ -329,7 +329,7 @@ int main(int argc, char* argv[]) {
                     for (Position pp :
                          it.second->position.get_surrounding_cardinals()) {
                         targets.erase(game_map->normalize(pp));
-                        cell->mark_unsafe(it.second);
+                        game_map->at(pp)->mark_unsafe(it.second);
                     }
                 }
             }
