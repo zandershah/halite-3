@@ -150,9 +150,6 @@ int main(int argc, char* argv[]) {
         unique_ptr<GameMap>& game_map = game.game_map;
 
         position_map<Halite> cost_to_base;
-        position_map<Position> closest_base;
-        position_map<bool> inspired;
-        position_map<bool> is_vis;
 
         int want_dropoff = numeric_limits<int>::min();
         Halite halite_cutoff;
@@ -169,6 +166,7 @@ int main(int argc, char* argv[]) {
             return left >= halite_cutoff;
         };
 
+#if 0
         log::log("Evaluating dropoffs.");
         auto ownage = generate_ownage();
         const double ownage_cost = evaluate_ownage(ownage);
@@ -215,11 +213,12 @@ int main(int argc, char* argv[]) {
               message(game.turn_number, new_dropoffs[i].second, "green");
             }
         }
+#endif
 
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
-            for (MapCell& map_cell : cell_row) {
-                Position p = map_cell.position;
+            for (MapCell& cell : cell_row) {
+                Position p = cell.position;
 
                 int close_enemies = 0;
                 for (auto& player : game.players) {
@@ -230,13 +229,13 @@ int main(int argc, char* argv[]) {
                                          INSPIRATION_RADIUS;
                     }
                 }
-                inspired[p] = close_enemies >= INSPIRATION_SHIP_COUNT;
+                cell.inspired = close_enemies >= INSPIRATION_SHIP_COUNT;
 
-                closest_base[p] = me->shipyard->position;
+                cell.closest_base = me->shipyard->position;
                 for (auto& it : me->dropoffs) {
                     if (game_map->calculate_distance(p, it.second->position) <
-                        game_map->calculate_distance(p, closest_base[p])) {
-                        closest_base[p] = it.second->position;
+                        game_map->calculate_distance(p, cell.closest_base)) {
+                        cell.closest_base = it.second->position;
                     }
                 }
             }
@@ -260,23 +259,26 @@ int main(int argc, char* argv[]) {
         // Possible targets.
         set<Position> targets;
         for (vector<MapCell>& cell_row : game_map->cells) {
-            for (MapCell& map_cell : cell_row) {
-                if (closest_base[map_cell.position] != map_cell.position)
-                    targets.insert(map_cell.position);
+            for (MapCell& cell : cell_row) {
+                if (cell.closest_base != cell.position)
+                    targets.insert(cell.position);
             }
         }
         for (auto& player : game.players) {
             if (player->id == me->id) continue;
             for (auto& it : player->ships) {
                 Position p = it.second->position;
-                if (!game_map->calculate_distance(p, closest_base[p])) continue;
+                MapCell* cell = game_map->at(p);
+
+                if (!game_map->calculate_distance(p, cell->closest_base))
+                    continue;
                 if (game.players.size() == 4) {
                     targets.erase(p);
-                    is_vis[p] = true;
+                    cell->mark_unsafe(it.second);
                     for (Position pp :
                          it.second->position.get_surrounding_cardinals()) {
                         targets.erase(game_map->normalize(pp));
-                        is_vis[game_map->normalize(pp)] = true;
+                        cell->mark_unsafe(it.second);
                     }
                 }
             }
@@ -291,8 +293,10 @@ int main(int argc, char* argv[]) {
             shared_ptr<Ship> ship = it.second;
             const EntityId id = ship->id;
 
+            MapCell* cell = game_map->at(ship);
+
             int closest_base_dist = game_map->calculate_distance(
-                ship->position, closest_base[ship->position]);
+                ship->position, cell->closest_base);
 
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
@@ -320,7 +324,7 @@ int main(int argc, char* argv[]) {
             if (hard_stuck(ship) || (stuck(ship) && tasks[id] != HARD_RETURN)) {
                 command_queue.push_back(ship->stay_still());
                 targets.erase(ship->position);
-                is_vis[ship->position] = true;
+                game_map->at(ship)->mark_unsafe(ship);
                 continue;
             }
 
@@ -328,7 +332,7 @@ int main(int argc, char* argv[]) {
             if (tasks[id] == HARD_RETURN && closest_base_dist <= 1) {
                 for (Direction d : ALL_CARDINALS) {
                     if (ship->position.directional_offset(d) ==
-                        closest_base[ship->position]) {
+                        cell->closest_base) {
                         command_queue.push_back(ship->move(d));
                     }
                 }
@@ -340,9 +344,9 @@ int main(int argc, char* argv[]) {
                     explorers.push_back(ship);
                     break;
                 case HARD_RETURN:
-                    if (ship->position == closest_base[ship->position]) break;
+                    if (ship->position == cell->closest_base) break;
                 case RETURN:
-                    ship->next = closest_base[ship->position];
+                    ship->next = cell->closest_base;
                     returners.push_back(ship);
             }
         }
@@ -357,15 +361,15 @@ int main(int argc, char* argv[]) {
 
                 vector<double> cost;
                 for (Position p : targets) {
-                    MapCell* map_cell = game_map->at(p);
+                    MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd =
-                        sqrt(game_map->calculate_distance(p, closest_base[p]));
+                    double dd = sqrt(
+                        game_map->calculate_distance(p, cell->closest_base));
 
-                    Halite profit = map_cell->halite + dist[p];
-                    if (inspired[p])
-                        profit += INSPIRED_BONUS_MULTIPLIER * map_cell->halite;
+                    Halite profit = cell->halite + dist[p];
+                    if (cell->inspired)
+                        profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     profit = min(profit, MAX_HALITE - ship->halite) -
                              cost_to_base[p];
 
@@ -406,7 +410,7 @@ int main(int argc, char* argv[]) {
             }
 
             for (auto it = local_targets.begin(); it != local_targets.end();) {
-                if (is_vis[*it])
+                if (game_map->at(*it)->is_occupied())
                     local_targets.erase(it++);
                 else
                     ++it;
@@ -429,7 +433,7 @@ int main(int argc, char* argv[]) {
 
                 position_map<double> surrounding_cost = generate_costs(ship);
                 for (auto& it : surrounding_cost) {
-                    if (!is_vis[it.first])
+                    if (!game_map->at(it.first)->is_occupied())
                         cost[move_indices[it.first]] = it.second;
                 }
 
@@ -443,7 +447,7 @@ int main(int argc, char* argv[]) {
 
             for (size_t i = 0; i < assignment.size(); ++i) {
                 if (explorers[i]->position == move_space[assignment[i]]) {
-                    is_vis[explorers[i]->position] = true;
+                    game_map->at(explorers[i])->mark_unsafe(explorers[i]);
                     command_queue.push_back(explorers[i]->stay_still());
                 }
                 for (Direction d : ALL_CARDINALS) {
@@ -451,7 +455,7 @@ int main(int argc, char* argv[]) {
                         explorers[i]->position.directional_offset(d));
                     if (pp == move_space[assignment[i]]) {
                         command_queue.push_back(explorers[i]->move(d));
-                        is_vis[pp] = true;
+                        game_map->at(pp)->mark_unsafe(explorers[i]);
                         break;
                     }
                 }
@@ -470,7 +474,8 @@ int main(int argc, char* argv[]) {
             ship_lo /= (game.players.size() - 1);
         }
 
-        if (me->halite >= SHIP_COST && !is_vis[me->shipyard->position] &&
+        if (me->halite >= SHIP_COST &&
+            !game_map->at(me->shipyard)->is_occupied() &&
             want_dropoff <= game.turn_number - 5 && !started_hard_return &&
             me->ships.size() <= ship_hi + 5 &&
             (game.turn_number <= MAX_TURNS * spawn_factor ||
