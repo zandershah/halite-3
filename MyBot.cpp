@@ -73,7 +73,8 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
             ship_halite += delta;
             map_halite -= delta;
         } else {
-            ship_halite -= map_halite / MOVE_COST_RATIO;
+            const Halite delta = map_halite / MOVE_COST_RATIO;
+            ship_halite -= delta;
             p = game.game_map->normalize(p.directional_offset(d));
             map_halite = game.game_map->at(p)->halite;
         }
@@ -83,7 +84,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    return {first_direction, ship_halite / pow(t, game.players.size() / 4.0)};
+    return {first_direction, ship_halite / t};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -95,7 +96,6 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     // Default values.
     for (Position pp : p.get_surrounding_cardinals())
         surrounding_cost[game_map->normalize(pp)] = 1e5;
-    surrounding_cost[p] = 1e7;
 
     // Optimize values with random walks.
     map<Direction, double> best_walk;
@@ -115,6 +115,9 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         Position pp = game_map->normalize(p.directional_offset(d[i]));
         surrounding_cost[pp] = pow(1e2, i);
     }
+
+    if (tasks[ship->id] != EXPLORE)
+      surrounding_cost[p] = 1e7;
 
     return surrounding_cost;
 }
@@ -196,6 +199,7 @@ int main(int argc, char* argv[]) {
     }
 
     bool started_hard_return = false;
+    int want_dropoff = numeric_limits<int>::min();
 
     for (;;) {
         auto begin = steady_clock::now();
@@ -205,8 +209,6 @@ int main(int argc, char* argv[]) {
         unique_ptr<GameMap>& game_map = game.game_map;
 
         position_map<Halite> cost_to_base;
-
-        int want_dropoff = numeric_limits<int>::min();
 
         vector<Command> command_queue;
 
@@ -306,7 +308,8 @@ int main(int argc, char* argv[]) {
 
                 if (!game_map->calculate_distance(p, cell->closest_base))
                     continue;
-                if (game.players.size() == 4) {
+                // if (game.players.size() == 4) {
+                {
                     targets.erase(p);
                     cell->mark_unsafe(it.second);
                     if (hard_stuck(it.second)) continue;
