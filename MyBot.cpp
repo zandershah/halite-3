@@ -21,16 +21,10 @@ void message(int t, Position p, string c) {
 
 Game game;
 unordered_map<EntityId, Task> tasks;
-Halite halite_cutoff;
 
-bool hard_stuck(shared_ptr<Ship> ship) {
+inline bool hard_stuck(shared_ptr<Ship> ship) {
     const Halite left = game.game_map->at(ship)->halite;
     return ship->halite < left / MOVE_COST_RATIO;
-}
-bool stuck(shared_ptr<Ship> ship) {
-    const Halite left = game.game_map->at(ship)->halite;
-    if (!left || ship->is_full()) return false;
-    return left >= halite_cutoff;
 }
 
 void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
@@ -111,8 +105,8 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     }
     vector<Direction> d;
     for (auto& it : best_walk) {
-        log::log(ship->position, "->", ship->next, "First Step:", it.first,
-                 "Rate:", it.second);
+        // log::log(ship->position, "->", ship->next, "First Step:", it.first,
+        // "Rate:", it.second);
         d.push_back(it.first);
     }
     sort(d.begin(), d.end(),
@@ -296,16 +290,6 @@ int main(int argc, char* argv[]) {
         for (auto& it : me->dropoffs) sources.push_back(it.second->position);
         dijkstras(cost_to_base, sources);
 
-        // Halite distribution.
-        vector<Halite> flat_halite;
-        for (vector<MapCell>& cell_row : game_map->cells) {
-            for (MapCell& map_cell : cell_row) {
-                flat_halite.push_back(map_cell.halite);
-            }
-        }
-        sort(flat_halite.begin(), flat_halite.end());
-        halite_cutoff = flat_halite[flat_halite.size() / 2];
-
         // Possible targets.
         set<Position> targets;
         for (vector<MapCell>& cell_row : game_map->cells) {
@@ -338,6 +322,10 @@ int main(int argc, char* argv[]) {
         log::log("Tasks.");
         vector<shared_ptr<Ship>> returners, explorers;
 
+        bool all_empty = true;
+        for (vector<MapCell>& cell_row : game_map->cells)
+            for (MapCell& map_cell : cell_row) all_empty &= !map_cell.halite;
+
         for (auto& it : me->ships) {
             shared_ptr<Ship> ship = it.second;
             const EntityId id = ship->id;
@@ -353,7 +341,7 @@ int main(int argc, char* argv[]) {
             int return_estimate =
                 game.turn_number + closest_base_dist + me->ships.size() * 0.3;
             // TODO: Dry run of return.
-            if (!halite_cutoff || return_estimate >= MAX_TURNS) {
+            if (all_empty || return_estimate >= MAX_TURNS) {
                 tasks[id] = HARD_RETURN;
                 started_hard_return = true;
             }
@@ -368,8 +356,7 @@ int main(int argc, char* argv[]) {
                     break;
             }
 
-            // TODO: Fix stuck.
-            if (hard_stuck(ship) || (stuck(ship) && tasks[id] != HARD_RETURN)) {
+            if (hard_stuck(ship)) {
                 command_queue.push_back(ship->stay_still());
                 targets.erase(ship->position);
                 game_map->at(ship)->mark_unsafe(ship);
@@ -443,7 +430,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // TODO: Random walk to determine edge weights.
         log::log("Move cost matrix.");
         if (!explorers.empty() || !returners.empty()) {
             explorers.insert(explorers.end(), returners.begin(),
