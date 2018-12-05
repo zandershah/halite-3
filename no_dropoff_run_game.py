@@ -6,9 +6,9 @@ os.system('set -e')
 os.system('cmake .')
 os.system('make')
 
-bots = ["./MyBot", "./bots/MyBot_Dec5NoDropoff", "./bots/MyBot_Dec5NoDropoff", "./bots/MyBot_Dec5NoDropoff"]
+bots = ["./MyBot"] + ["./bots/MyBot_Dec5NoDropoffNoStuck"] * 3
 # shuffle(bots)
-# bots = bots[0:2]
+bots = bots[0:2]
 
 seed = randint(0, (1 << 31) - 1) if len(sys.argv) == 1 else sys.argv[1]
 

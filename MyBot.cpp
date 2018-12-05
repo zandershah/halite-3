@@ -83,7 +83,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    return {first_direction, ship_halite / t};
+    return {first_direction, ship_halite / pow(t, game.players.size() / 4.0)};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
