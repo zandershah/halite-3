@@ -44,8 +44,9 @@ struct GameMap {
         return {x, y};
     }
 
-    std::vector<Direction> get_unsafe_moves(const Position& source,
-                                            const Position& destination) {
+    std::vector<Direction> get_moves(const Position& source,
+                                     const Position& destination,
+                                     Halite ship_halite, Halite map_halite) {
         const auto& normalized_source = normalize(source);
         const auto& normalized_destination = normalize(destination);
 
@@ -55,6 +56,10 @@ struct GameMap {
         const int wrapped_dy = height - dy;
 
         std::vector<Direction> possible_moves;
+
+        if (map_halite) possible_moves.push_back(Direction::STILL);
+        if (ship_halite < map_halite / constants::MOVE_COST_RATIO)
+            return possible_moves;
 
         if (normalized_source.x < normalized_destination.x) {
             possible_moves.push_back(dx > wrapped_dx ? Direction::WEST

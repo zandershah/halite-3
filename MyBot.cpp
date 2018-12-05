@@ -21,6 +21,17 @@ void message(int t, Position p, string c) {
 
 Game game;
 unordered_map<EntityId, Task> tasks;
+Halite halite_cutoff;
+
+bool hard_stuck(shared_ptr<Ship> ship) {
+    const Halite left = game.game_map->at(ship)->halite;
+    return ship->halite < left / MOVE_COST_RATIO;
+}
+bool stuck(shared_ptr<Ship> ship) {
+    const Halite left = game.game_map->at(ship)->halite;
+    if (!left || ship->is_full()) return false;
+    return left >= halite_cutoff;
+}
 
 void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     for (vector<MapCell>& cell_row : game.game_map->cells) {
@@ -47,19 +58,69 @@ void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     }
 }
 
-position_map<double> generate_costs(shared_ptr<Ship> ship) {
-    position_map<double> surrounding_cost;
-
+// Navigate to |ship->next|.
+pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
     Position p = ship->position;
-    for (Position pp : p.get_surrounding_cardinals()) {
-        pp = game.game_map->normalize(pp);
-        surrounding_cost[pp] = 1e5;
+    Halite ship_halite = ship->halite;
+    Halite map_halite = game.game_map->at(ship)->halite;
+    Direction first_direction = Direction::UNDEFINED;
+
+    double t = 1;
+    for (; p != ship->next; ++t) {
+        auto moves =
+            game.game_map->get_moves(p, ship->next, ship_halite, map_halite);
+        Direction d = moves[rand() % moves.size()];
+        if (first_direction == Direction::UNDEFINED) first_direction = d;
+
+        if (d == Direction::STILL) {
+            const Halite delta =
+                min((map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO,
+                    MAX_HALITE - ship_halite);
+            ship_halite += delta;
+            map_halite -= delta;
+        } else {
+            ship_halite -= map_halite / MOVE_COST_RATIO;
+            p = game.game_map->normalize(p.directional_offset(d));
+            map_halite = game.game_map->at(p)->halite;
+        }
     }
 
-    surrounding_cost[p] = tasks[ship->id] == EXPLORE ? 1e3 : 1e7;
+    if (first_direction == Direction::UNDEFINED)
+        first_direction = Direction::STILL;
+    if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    for (Direction d : game.game_map->get_unsafe_moves(p, ship->next))
-        surrounding_cost[game.game_map->normalize(p.directional_offset(d))] = 1;
+    return {first_direction, ship_halite / t};
+}
+
+position_map<double> generate_costs(shared_ptr<Ship> ship) {
+    unique_ptr<GameMap>& game_map = game.game_map;
+    Position p = ship->position;
+
+    position_map<double> surrounding_cost;
+
+    // Default values.
+    for (Position pp : p.get_surrounding_cardinals())
+        surrounding_cost[game_map->normalize(pp)] = 1e5;
+    surrounding_cost[p] = 1e7;
+
+    // Optimize values with random walks.
+    unordered_map<Direction, double> best_walk;
+    for (size_t i = 0; i < 500; ++i) {
+        auto walk = random_walk(ship);
+        best_walk[walk.first] = max(best_walk[walk.first], walk.second);
+    }
+    vector<Direction> d;
+    for (auto& it : best_walk) {
+        log::log(ship->position, "->", ship->next, "First Step:", it.first,
+                 "Rate:", it.second);
+        d.push_back(it.first);
+    }
+    sort(d.begin(), d.end(),
+         [&](Direction u, Direction v) { return best_walk[u] > best_walk[v]; });
+    for (size_t i = 0; i < d.size(); ++i) {
+        Position pp = game_map->normalize(p.directional_offset(d[i]));
+        surrounding_cost[pp] = pow(1e2, i);
+    }
 
     return surrounding_cost;
 }
@@ -152,19 +213,8 @@ int main(int argc, char* argv[]) {
         position_map<Halite> cost_to_base;
 
         int want_dropoff = numeric_limits<int>::min();
-        Halite halite_cutoff;
 
         vector<Command> command_queue;
-
-        auto hard_stuck = [&](shared_ptr<Ship> ship) {
-            const Halite left = game_map->at(ship)->halite;
-            return ship->halite < left / MOVE_COST_RATIO;
-        };
-        auto stuck = [&](shared_ptr<Ship> ship) {
-            const Halite left = game_map->at(ship)->halite;
-            if (!left || ship->is_full()) return false;
-            return left >= halite_cutoff;
-        };
 
 #if 0
         log::log("Evaluating dropoffs.");
@@ -275,6 +325,7 @@ int main(int argc, char* argv[]) {
                 if (game.players.size() == 4) {
                     targets.erase(p);
                     cell->mark_unsafe(it.second);
+                    if (hard_stuck(it.second)) continue;
                     for (Position pp :
                          it.second->position.get_surrounding_cardinals()) {
                         targets.erase(game_map->normalize(pp));
@@ -286,8 +337,6 @@ int main(int argc, char* argv[]) {
 
         log::log("Tasks.");
         vector<shared_ptr<Ship>> returners, explorers;
-
-        double return_cutoff = 0.95;
 
         for (auto& it : me->ships) {
             shared_ptr<Ship> ship = it.second;
@@ -311,8 +360,7 @@ int main(int argc, char* argv[]) {
 
             switch (tasks[id]) {
                 case EXPLORE:
-                    if (ship->halite > MAX_HALITE * return_cutoff)
-                        tasks[id] = RETURN;
+                    if (ship->halite > MAX_HALITE * 0.95) tasks[id] = RETURN;
                     break;
                 case RETURN:
                     if (!closest_base_dist) tasks[id] = EXPLORE;
@@ -409,13 +457,6 @@ int main(int argc, char* argv[]) {
                     local_targets.insert(game_map->normalize(pp));
             }
 
-            for (auto it = local_targets.begin(); it != local_targets.end();) {
-                if (game_map->at(*it)->is_occupied())
-                    local_targets.erase(it++);
-                else
-                    ++it;
-            }
-
             vector<Position> move_space(local_targets.begin(),
                                         local_targets.end());
 
@@ -428,8 +469,7 @@ int main(int argc, char* argv[]) {
             // cost.
             vector<vector<double>> cost_matrix;
             for (auto ship : explorers) {
-                vector<double> cost(move_space.size(),
-                                    numeric_limits<double>::max());
+                vector<double> cost(move_space.size(), 1e9);
 
                 position_map<double> surrounding_cost = generate_costs(ship);
                 for (auto& it : surrounding_cost) {

@@ -12,6 +12,7 @@ enum class Direction : char {
     SOUTH = 's',
     WEST = 'w',
     STILL = 'o',
+    UNDEFINED = '?',
 };
 
 static const std::array<Direction, 4> ALL_CARDINALS = {
