@@ -104,7 +104,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     surrounding_cost[p] = 1e7;
 
     // Optimize values with random walks.
-    unordered_map<Direction, double> best_walk;
+    map<Direction, double> best_walk;
     for (size_t i = 0; i < 500; ++i) {
         auto walk = random_walk(ship);
         best_walk[walk.first] = max(best_walk[walk.first], walk.second);
