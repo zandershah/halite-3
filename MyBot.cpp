@@ -27,6 +27,15 @@ inline bool hard_stuck(shared_ptr<Ship> ship) {
     return ship->halite < left / MOVE_COST_RATIO;
 }
 
+inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
+    MapCell* cell = game.game_map->at(p);
+    if (!cell->is_occupied()) return true;
+
+    if (ship->owner == cell->ship->owner || tasks[ship->id] != EXPLORE)
+        return false;
+    return ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
+}
+
 void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     for (vector<MapCell>& cell_row : game.game_map->cells) {
         for (MapCell& map_cell : cell_row) {
@@ -116,8 +125,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         surrounding_cost[pp] = pow(1e2, i);
     }
 
-    if (tasks[ship->id] != EXPLORE)
-      surrounding_cost[p] = 1e7;
+    if (tasks[ship->id] != EXPLORE) surrounding_cost[p] = 1e7;
 
     return surrounding_cost;
 }
@@ -199,7 +207,7 @@ int main(int argc, char* argv[]) {
     }
 
     bool started_hard_return = false;
-    int want_dropoff = numeric_limits<int>::min();
+    // int want_dropoff = numeric_limits<int>::min();
 
     for (;;) {
         auto begin = steady_clock::now();
@@ -308,16 +316,16 @@ int main(int argc, char* argv[]) {
 
                 if (!game_map->calculate_distance(p, cell->closest_base))
                     continue;
-                // if (game.players.size() == 4) {
-                {
-                    targets.erase(p);
-                    cell->mark_unsafe(it.second);
-                    if (hard_stuck(it.second)) continue;
-                    for (Position pp :
-                         it.second->position.get_surrounding_cardinals()) {
+
+                if (game.players.size() == 4) targets.erase(p);
+                cell->mark_unsafe(it.second);
+
+                if (hard_stuck(it.second)) continue;
+
+                for (Position pp : p.get_surrounding_cardinals()) {
+                    if (game.players.size() == 4)
                         targets.erase(game_map->normalize(pp));
-                        game_map->at(pp)->mark_unsafe(it.second);
-                    }
+                    game_map->at(pp)->mark_unsafe(it.second);
                 }
             }
         }
@@ -462,7 +470,7 @@ int main(int argc, char* argv[]) {
 
                 position_map<double> surrounding_cost = generate_costs(ship);
                 for (auto& it : surrounding_cost) {
-                    if (!game_map->at(it.first)->is_occupied())
+                    if (safe_to_move(ship, it.first))
                         cost[move_indices[it.first]] = it.second;
                 }
 
@@ -494,23 +502,28 @@ int main(int argc, char* argv[]) {
         log::log("Spawn ships.");
         size_t ship_lo = 0, ship_hi = numeric_limits<short>::max();
         // TODO: Smarter counter of mid-game aggression.
-        if (game.turn_number <= MAX_TURNS * 0.75) {
+        if (!started_hard_return) {
+            ship_hi = 0;
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
-                ship_hi = min(ship_hi, player->ships.size());
+                ship_hi = max(ship_hi, player->ships.size());
                 ship_lo += player->ships.size();
             }
             ship_lo /= (game.players.size() - 1);
         }
 
-        if (me->halite >= SHIP_COST &&
-            !game_map->at(me->shipyard)->is_occupied() &&
-            want_dropoff <= game.turn_number - 5 && !started_hard_return &&
-            me->ships.size() <= ship_hi + 5 &&
-            (game.turn_number <= MAX_TURNS * spawn_factor ||
-             me->ships.size() < ship_lo)) {
-            command_queue.push_back(me->shipyard->spawn());
-        }
+        bool should_spawn = me->halite >= SHIP_COST;
+        should_spawn &= !game_map->at(me->shipyard)->is_occupied();
+        // should_spawn &= want_dropoff <= game.turn_number - 5;
+        should_spawn &= !started_hard_return;
+
+        should_spawn &= game.turn_number <= MAX_TURNS * spawn_factor ||
+                        me->ships.size() < ship_lo;
+        // TODO: |ship_hi| used to have a bug which took the min instead of the
+        // max. Make sure that this doesn't regress.
+        should_spawn &= me->ships.size() <= ship_hi + 5;
+
+        if (should_spawn) command_queue.push_back(me->shipyard->spawn());
 
         if (game.turn_number == MAX_TURNS && game.my_id == 0) {
             log::log("Done!");
