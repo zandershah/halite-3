@@ -14,11 +14,9 @@ using position_map = unordered_map<Position, V>;
 
 // Fluorine JSON.
 stringstream flog;
-void message(int t, Position p, string c, string msg = "") {
+void message(int t, Position p, string c) {
     flog << "{\"t\": " << t << ", \"x\": " << p.x << ", \"y\": " << p.y
-         << ", \"color\": \"" << c << "\"";
-    if (!msg.empty()) flog << ", \"msg\": \"" << msg << "\"";
-    flog << "}," << endl;
+         << ", \"color\": \"" << c << "\"}," << endl;
 }
 
 Game game;
@@ -33,6 +31,7 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     MapCell* cell = game.game_map->at(p);
     if (!cell->is_occupied()) return true;
 
+    if (game.players.size() == 4) return false;
     if (ship->owner == cell->ship->owner || tasks[ship->id] != EXPLORE)
         return false;
     return ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
@@ -63,29 +62,26 @@ void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     }
 }
 
-// Navigate to |g|.
-pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position g) {
+// Navigate to |ship->next|.
+pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
     Position p = ship->position;
     Halite ship_halite = ship->halite;
     Halite map_halite = game.game_map->at(ship)->halite;
-
     Direction first_direction = Direction::UNDEFINED;
 
     double t = 1;
-    for (; p != g; ++t) {
-        auto moves = game.game_map->get_moves(p, g, ship_halite, map_halite);
+    for (; p != ship->next; ++t) {
+        auto moves =
+            game.game_map->get_moves(p, ship->next, ship_halite, map_halite);
         Direction d = moves[rand() % moves.size()];
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
         if (d == Direction::STILL) {
-            Halite mined = (map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
-            mined = min(mined, MAX_HALITE - ship_halite);
-            ship_halite += mined;
-            if (game.game_map->at(p)->inspired) {
-                ship_halite += INSPIRED_BONUS_MULTIPLIER * mined;
-                ship_halite = min(ship_halite, MAX_HALITE);
-            }
-            map_halite -= mined;
+            const Halite delta =
+                min((map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO,
+                    MAX_HALITE - ship_halite);
+            ship_halite += delta;
+            map_halite -= delta;
         } else {
             const Halite delta = map_halite / MOVE_COST_RATIO;
             ship_halite -= delta;
@@ -94,8 +90,11 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position g) {
         }
     }
 
+    if (first_direction == Direction::UNDEFINED)
+        first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
-    return {first_direction, ship_halite / pow(t, game.players.size() / 4.0)};
+
+    return {first_direction, ship_halite / t};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -110,15 +109,15 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
 
     // Optimize values with random walks.
     map<Direction, double> best_walk;
-    for (size_t i = 0; i < 100; ++i) {
-        auto walk = random_walk(ship, ship->next);
+    for (size_t i = 0; i < 500; ++i) {
+        auto walk = random_walk(ship);
         best_walk[walk.first] = max(best_walk[walk.first], walk.second);
     }
     vector<Direction> d;
     for (auto& it : best_walk) {
-        if (it.first != Direction::UNDEFINED) d.push_back(it.first);
         // log::log(ship->position, "->", ship->next, "First Step:", it.first,
         // "Rate:", it.second);
+        d.push_back(it.first);
     }
     sort(d.begin(), d.end(),
          [&](Direction u, Direction v) { return best_walk[u] > best_walk[v]; });
@@ -180,7 +179,7 @@ double evaluate_ownage(const position_map<pair<EntityId, double>>& ownage) {
     double cost = 0.0;
     for (auto& it : ownage) {
         if (it.second.first != game.my_id) continue;
-        double d = max(1.5, it.second.second);
+        double d = max(1.0, it.second.second);
         cost += game.game_map->at(it.first)->halite / pow(d, 4);
     }
     return cost;
@@ -209,6 +208,7 @@ int main(int argc, char* argv[]) {
     }
 
     bool started_hard_return = false;
+    // int want_dropoff = numeric_limits<int>::min();
 
     for (;;) {
         auto begin = steady_clock::now();
@@ -240,8 +240,7 @@ int main(int argc, char* argv[]) {
                  return game_map->at(u)->halite > game_map->at(v)->halite;
              });
 
-        log::log("Ownage", ownage_cost);
-        set<Position> new_dropoffs;
+        vector<pair<double, Position>> new_dropoffs;
         for (size_t i = 0; i < my_ownage.size(); ++i) {
             auto t = steady_clock::now();
             if (i >= 50) break;
@@ -252,33 +251,21 @@ int main(int argc, char* argv[]) {
                                                     my_ownage[i].y);
 
             auto dropoff_ownage = generate_ownage();
-
-            double relative_ownage =
-                (evaluate_ownage(dropoff_ownage) + ownage_cost) / ownage_cost;
-
-            if (relative_ownage >= 25) {
-                new_dropoffs.insert(my_ownage[i]);
-                log::log("Relative Ownage:", relative_ownage);
-                message(game.turn_number, my_ownage[i], "green",
-                        to_string(relative_ownage));
-            }
+            new_dropoffs.emplace_back(
+                evaluate_ownage(dropoff_ownage), my_ownage[i]);
 
             me->dropoffs.erase(-1);
         }
-
-        for (auto it = me->ships.begin(); it != me->ships.end(); ++it) {
-            shared_ptr<Ship> ship = it->second;
-            if (new_dropoffs.find(ship->position) == new_dropoffs.end())
-                continue;
-
-            const Halite delta =
-                DROPOFF_COST - ship->halite + game_map->at(ship)->halite;
-            if (delta <= me->halite) {
-                me->halite -= max(0, delta);
-                command_queue.push_back(ship->make_dropoff());
-
-                me->ships.erase(it);
-                break;
+        sort(new_dropoffs.begin(), new_dropoffs.end(),
+             greater<pair<double, Position>>());
+        // TODO: Do something with the dropoffs.
+        log::log("Ownage", ownage_cost);
+        for (size_t i = 0; i < min(3ul, new_dropoffs.size()); ++i) {
+            double relative_ownage = (new_dropoffs[i].first + ownage_cost) / ownage_cost;
+            if (relative_ownage >= 20) {
+              log::log("Potential Ownage:", new_dropoffs[i].first);
+              log::log("Relative Ownage:", relative_ownage);
+              message(game.turn_number, new_dropoffs[i].second, "green");
             }
         }
 #endif
@@ -435,10 +422,8 @@ int main(int argc, char* argv[]) {
 
                     double rate = profit / max(1.0, d + dd);
 
-                    auto walk = random_walk(ship, p);
                     // TODO: Fix.
-                    cost.push_back(
-                        walk.first == Direction::UNDEFINED ? 1e9 : -rate + 5e5);
+                    cost.push_back(-rate + 5e3);
                 }
                 cost_matrix.push_back(move(cost));
             }
@@ -530,9 +515,8 @@ int main(int argc, char* argv[]) {
 
         bool should_spawn = me->halite >= SHIP_COST;
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
+        // should_spawn &= want_dropoff <= game.turn_number - 5;
         should_spawn &= !started_hard_return;
-
-        // should_spawn &= new_dropoffs.empty();
 
         should_spawn &= game.turn_number <= MAX_TURNS * spawn_factor ||
                         me->ships.size() < ship_lo;

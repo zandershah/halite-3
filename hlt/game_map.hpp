@@ -77,11 +77,6 @@ struct GameMap {
                                                      : Direction::SOUTH);
         }
 
-        std::remove_if(
-            possible_moves.begin(), possible_moves.end(), [&](Direction d) {
-                return at(source.directional_offset(d))->is_occupied();
-            });
-
         return possible_moves;
     }
 
