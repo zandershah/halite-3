@@ -69,7 +69,9 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
     Position p = ship->position;
     Halite ship_halite = ship->halite;
     Halite map_halite = game.game_map->at(ship)->halite;
+
     Direction first_direction = Direction::UNDEFINED;
+    Halite burned_halite = 0;
 
     double t = 1;
     for (; p != ship->next; ++t) {
@@ -92,6 +94,8 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
             ship_halite -= delta;
             p = game.game_map->normalize(p.directional_offset(d));
             map_halite = game.game_map->at(p)->halite;
+
+            burned_halite += delta;
         }
     }
 
@@ -99,7 +103,8 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    return {first_direction, ship_halite / pow(t, game.players.size() / 4.0)};
+    return {first_direction,
+            (ship_halite - burned_halite) / pow(t, game.players.size() / 4.0)};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -225,7 +230,7 @@ int main(int argc, char* argv[]) {
 
         vector<Command> command_queue;
 
-#if 1
+#if 0
         log::log("Evaluating dropoffs.");
         auto ownage = generate_ownage();
         const double ownage_cost = evaluate_ownage(ownage);
@@ -428,8 +433,8 @@ int main(int argc, char* argv[]) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd = sqrt(
-                        game_map->calculate_distance(p, cell->closest_base));
+                    double dd =
+                        game_map->calculate_distance(p, cell->closest_base);
 
                     Halite profit = cell->halite + dist[p];
                     if (cell->inspired)
@@ -534,7 +539,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
 
-        should_spawn &= new_dropoffs.empty();
+        // should_spawn &= new_dropoffs.empty();
 
         should_spawn &= game.turn_number <= MAX_TURNS * spawn_factor ||
                         me->ships.size() < ship_lo;
