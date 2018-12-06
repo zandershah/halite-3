@@ -77,11 +77,14 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
         if (d == Direction::STILL) {
-            const Halite delta =
-                min((map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO,
-                    MAX_HALITE - ship_halite);
-            ship_halite += delta;
-            map_halite -= delta;
+            Halite mined = (map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+            mined = min(mined, MAX_HALITE - ship_halite);
+            ship_halite += mined;
+            if (game.game_map->at(p)->inspired) {
+                ship_halite += INSPIRED_BONUS_MULTIPLIER * mined;
+                ship_halite = min(ship_halite, MAX_HALITE);
+            }
+            map_halite -= mined;
         } else {
             const Halite delta = map_halite / MOVE_COST_RATIO;
             ship_halite -= delta;
@@ -107,6 +110,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     for (Position pp : p.get_surrounding_cardinals())
         surrounding_cost[game_map->normalize(pp)] = 1e5;
 
+    // TODO: Try taking 75p or the mean instead of the max.
     // Optimize values with random walks.
     map<Direction, double> best_walk;
     for (size_t i = 0; i < 500; ++i) {
@@ -315,7 +319,7 @@ int main(int argc, char* argv[]) {
                 Position p = it.second->position;
                 MapCell* cell = game_map->at(p);
 
-                if (!game_map->calculate_distance(p, cell->closest_base))
+                if (game_map->calculate_distance(p, cell->closest_base) <= 3)
                     continue;
 
                 if (game.players.size() == 4) targets.erase(p);
