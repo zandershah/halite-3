@@ -64,19 +64,17 @@ void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
     }
 }
 
-// Navigate to |ship->next|.
-pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
+// Navigate to |g|.
+pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position g) {
     Position p = ship->position;
     Halite ship_halite = ship->halite;
     Halite map_halite = game.game_map->at(ship)->halite;
 
     Direction first_direction = Direction::UNDEFINED;
-    Halite burned_halite = 0;
 
     double t = 1;
-    for (; p != ship->next; ++t) {
-        auto moves =
-            game.game_map->get_moves(p, ship->next, ship_halite, map_halite);
+    for (; p != g; ++t) {
+        auto moves = game.game_map->get_moves(p, g, ship_halite, map_halite);
         Direction d = moves[rand() % moves.size()];
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
@@ -94,17 +92,11 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
             ship_halite -= delta;
             p = game.game_map->normalize(p.directional_offset(d));
             map_halite = game.game_map->at(p)->halite;
-
-            burned_halite += delta;
         }
     }
 
-    if (first_direction == Direction::UNDEFINED)
-        first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
-
-    return {first_direction,
-            (ship_halite - burned_halite) / pow(t, game.players.size() / 4.0)};
+    return {first_direction, ship_halite / pow(t, game.players.size() / 4.0)};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -119,15 +111,15 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
 
     // Optimize values with random walks.
     map<Direction, double> best_walk;
-    for (size_t i = 0; i < 500; ++i) {
-        auto walk = random_walk(ship);
+    for (size_t i = 0; i < 100; ++i) {
+        auto walk = random_walk(ship, ship->next);
         best_walk[walk.first] = max(best_walk[walk.first], walk.second);
     }
     vector<Direction> d;
     for (auto& it : best_walk) {
+        if (it.first != Direction::UNDEFINED) d.push_back(it.first);
         // log::log(ship->position, "->", ship->next, "First Step:", it.first,
         // "Rate:", it.second);
-        d.push_back(it.first);
     }
     sort(d.begin(), d.end(),
          [&](Direction u, Direction v) { return best_walk[u] > best_walk[v]; });
@@ -433,8 +425,8 @@ int main(int argc, char* argv[]) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd =
-                        game_map->calculate_distance(p, cell->closest_base);
+                    double dd = sqrt(
+                        game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite + dist[p];
                     if (cell->inspired)
@@ -444,8 +436,10 @@ int main(int argc, char* argv[]) {
 
                     double rate = profit / max(1.0, d + dd);
 
+                    auto walk = random_walk(ship, p);
                     // TODO: Fix.
-                    cost.push_back(-rate + 5e5);
+                    cost.push_back(
+                        walk.first == Direction::UNDEFINED ? 1e9 : -rate + 5e5);
                 }
                 cost_matrix.push_back(move(cost));
             }
