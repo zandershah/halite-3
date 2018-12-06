@@ -33,7 +33,6 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     MapCell* cell = game.game_map->at(p);
     if (!cell->is_occupied()) return true;
 
-    if (game.players.size() == 4) return false;
     if (ship->owner == cell->ship->owner || tasks[ship->id] != EXPLORE)
         return false;
     return ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
