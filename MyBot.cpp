@@ -69,6 +69,8 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
     Halite map_halite = game.game_map->at(ship)->halite;
     Direction first_direction = Direction::UNDEFINED;
 
+    Halite burned_halite = 0;
+
     double t = 1;
     for (; p != ship->next; ++t) {
         auto moves =
@@ -90,6 +92,8 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
             ship_halite -= delta;
             p = game.game_map->normalize(p.directional_offset(d));
             map_halite = game.game_map->at(p)->halite;
+
+            burned_halite += delta;
         }
     }
 
@@ -97,7 +101,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    return {first_direction, ship_halite / t};
+    return {first_direction, (ship_halite - burned_halite) / pow(t, game.players.size() / 4.0)};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -119,8 +123,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     }
     vector<Direction> d;
     for (auto& it : best_walk) {
-        // log::log(ship->position, "->", ship->next, "First Step:", it.first,
-        // "Rate:", it.second);
+        // log::log(ship->position, "->", ship->next, "First Step:", it.first, "Rate:", it.second);
         d.push_back(it.first);
     }
     sort(d.begin(), d.end(),
