@@ -77,11 +77,14 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
         if (d == Direction::STILL) {
-            const Halite delta =
-                min((map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO,
-                    MAX_HALITE - ship_halite);
-            ship_halite += delta;
-            map_halite -= delta;
+            Halite mined = (map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+            mined = min(mined, MAX_HALITE - ship_halite);
+            ship_halite += mined;
+            if (game.game_map->at(p)->inspired) {
+                ship_halite += INSPIRED_BONUS_MULTIPLIER * mined;
+                ship_halite = min(ship_halite, MAX_HALITE);
+            }
+            map_halite -= mined;
         } else {
             const Halite delta = map_halite / MOVE_COST_RATIO;
             ship_halite -= delta;
