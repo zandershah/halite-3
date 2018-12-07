@@ -106,8 +106,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    return {first_direction,
-            (ship_halite - burned_halite) / pow(t, game.players.size() / 4.0)};
+    return {first_direction, (ship_halite - burned_halite) / t};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -168,6 +167,7 @@ int main(int argc, char* argv[]) {
     }
 
     bool started_hard_return = false;
+    bool wanted_dropoff = false;
 
     for (;;) {
         auto begin = steady_clock::now();
@@ -194,7 +194,7 @@ int main(int argc, char* argv[]) {
             }
 
             const int close =
-                game_map->width / (game.players.size() == 2 ? 3 : 6);
+                game_map->width / (game.players.size() == 2 ? 3 : 4);
 
             bool local_dropoffs = false;
             for (auto& player : game.players) {
@@ -213,22 +213,21 @@ int main(int argc, char* argv[]) {
 
             bool ideal_dropoff =
                 halite_around >= MAX_HALITE * game_map->width / 3;
-            ideal_dropoff &= me->halite >= delta;
             ideal_dropoff &= !local_dropoffs;
-            ideal_dropoff &= game.turn_number <= MAX_TURNS * 0.666;
+            ideal_dropoff &= game.turn_number <= MAX_TURNS * spawn_factor;
 
-            ideal_dropoff |= delta <= 0;
-
-            if (ideal_dropoff) {
+            if (ideal_dropoff && delta <= me->halite) {
                 me->halite -= max(0, delta);
                 command_queue.push_back(ship->make_dropoff());
                 game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
                     game.my_id, -ship->id, ship->position.x, ship->position.y);
+                wanted_dropoff = true;
 
                 log::log("Dropoff created at", ship->position);
 
                 me->ships.erase(it++);
             } else {
+                wanted_dropoff |= ideal_dropoff;
                 ++it;
             }
         }
@@ -478,14 +477,13 @@ int main(int argc, char* argv[]) {
 
         bool should_spawn = me->halite >= SHIP_COST;
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
-        // should_spawn &= want_dropoff <= game.turn_number - 5;
         should_spawn &= !started_hard_return;
 
         should_spawn &= game.turn_number <= MAX_TURNS * spawn_factor ||
                         me->ships.size() < ship_lo;
-        // TODO: |ship_hi| used to have a bug which took the min instead of the
-        // max. Make sure that this doesn't regress.
         should_spawn &= me->ships.size() <= ship_hi + 5;
+        should_spawn &=
+            !wanted_dropoff || me->halite >= DROPOFF_COST + SHIP_COST;
 
         if (should_spawn) command_queue.push_back(me->shipyard->spawn());
 
