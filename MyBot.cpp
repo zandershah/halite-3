@@ -88,9 +88,11 @@ void bfs(position_map<Halite>& dist, vector<Position>& sources, F f) {
 
 // Navigate to |ship->next|.
 pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
+    unique_ptr<GameMap>& game_map = game.game_map;
+
     Position p = ship->position;
     Halite ship_halite = ship->halite;
-    Halite map_halite = game.game_map->at(ship)->halite;
+    Halite map_halite = game_map->at(ship)->halite;
     Direction first_direction = Direction::UNDEFINED;
 
     Halite burned_halite = 0;
@@ -98,7 +100,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
     double t = 1;
     for (; p != ship->next; ++t) {
         auto moves =
-            game.game_map->get_moves(p, ship->next, ship_halite, map_halite);
+            game_map->get_moves(p, ship->next, ship_halite, map_halite);
         Direction d = moves[rand() % moves.size()];
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
@@ -112,23 +114,25 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
             }
             map_halite -= mined;
         } else {
-            const Halite delta = map_halite / MOVE_COST_RATIO;
-            ship_halite -= delta;
-            p = game.game_map->normalize(p.directional_offset(d));
-            map_halite = game.game_map->at(p)->halite;
+            const Halite burned = map_halite / MOVE_COST_RATIO;
+            ship_halite -= burned;
+            p = game_map->normalize(p.directional_offset(d));
+            map_halite = game_map->at(p)->halite;
 
-            burned_halite += delta;
+            burned_halite += burned;
         }
 
         if (tasks[ship->id] == EXPLORE && ship_halite > MAX_HALITE * 0.95)
             break;
     }
 
-    if (first_direction == Direction::UNDEFINED)
-        first_direction = Direction::STILL;
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    return {first_direction, (ship_halite - burned_halite) / t};
+    const Halite end_mine =
+        (game_map->at(ship->next)->halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+    // log::log(ship->id, first_direction, (ship_halite + end_mine -
+    // burned_halite), t, (ship_halite + end_mine - burned_halite) / t);
+    return {first_direction, (ship_halite + end_mine - burned_halite) / t};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -141,27 +145,34 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     for (Position pp : p.get_surrounding_cardinals())
         surrounding_cost[game_map->normalize(pp)] = 1e5;
 
+    if (p == ship->next) {
+        surrounding_cost[p] = 1;
+        return surrounding_cost;
+    }
+
     // TODO: Try taking 75p or the mean instead of the max.
     // Optimize values with random walks.
-    map<Direction, double> best_walk;
+    map<Direction, vector<double>> best_walk;
     for (size_t i = 0; i < 500; ++i) {
         auto walk = random_walk(ship);
-        best_walk[walk.first] = max(best_walk[walk.first], walk.second);
+        best_walk[walk.first].push_back(walk.second);
     }
     vector<Direction> d;
     for (auto& it : best_walk) {
-        // log::log(ship->position, "->", ship->next, "First Step:",
-        // it.first, "Rate:", it.second);
         d.push_back(it.first);
+        sort(it.second.begin(), it.second.end());
     }
-    sort(d.begin(), d.end(),
-         [&](Direction u, Direction v) { return best_walk[u] > best_walk[v]; });
+    sort(d.begin(), d.end(), [&](Direction u, Direction v) {
+        return best_walk[u].back() > best_walk[v].back();
+        // return best_walk[u][best_walk[u].size() * 3 / 4] >
+        // best_walk[v][best_walk[v].size() * 3 / 4];
+    });
     for (size_t i = 0; i < d.size(); ++i) {
         Position pp = game_map->normalize(p.directional_offset(d[i]));
         surrounding_cost[pp] = pow(1e2, i);
     }
 
-    if (tasks[ship->id] != EXPLORE) surrounding_cost[p] = 1e7;
+    if (tasks[ship->id] == HARD_RETURN) surrounding_cost[p] = 1e7;
 
     return surrounding_cost;
 }
@@ -240,7 +251,8 @@ int main(int argc, char* argv[]) {
             bool ideal_dropoff = halite_around >= s * MAX_HALITE * 0.15;
             ideal_dropoff &= !local_dropoffs;
             ideal_dropoff &= game.turn_number <= MAX_TURNS * spawn_factor;
-            ideal_dropoff &= me->ships.size() / (2 + me->dropoffs.size()) >= 5;
+            ideal_dropoff &=
+                me->ships.size() / (2.0 + me->dropoffs.size()) >= 7.5;
 
             if (ideal_dropoff && delta <= me->halite) {
                 me->halite -= max(0, delta);
@@ -403,18 +415,15 @@ int main(int argc, char* argv[]) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd = sqrt(
-                        game_map->calculate_distance(p, cell->closest_base));
+                    double dd =
+                        game_map->calculate_distance(p, cell->closest_base);
 
-                    Halite profit = cell->halite + dist[p];
+                    Halite profit = cell->halite - dist[p];
                     if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    profit = min(profit, MAX_HALITE - ship->halite) -
-                             cost_to_base[p];
 
                     double rate = profit / max(1.0, d + dd);
 
-                    // TODO: Fix.
                     cost.push_back(-rate + 5e3);
                 }
                 cost_matrix.push_back(move(cost));
