@@ -191,14 +191,14 @@ int main(int argc, char* argv[]) {
                 for (MapCell cell : cells) {
                     int d = game_map->calculate_distance(ship->position,
                                                          cell.position);
-                    if (d <= game_map->width / 8) {
+                    if (d <= game_map->width / 16) {
                         halite_around += cell.halite;
                         ++s;
                     }
                 }
             }
 
-            const int close = game_map->width / 3;
+            const int close = game_map->width / 4;
 
             bool local_dropoffs = false;
             for (auto& player : game.players) {
@@ -215,8 +215,7 @@ int main(int argc, char* argv[]) {
             const Halite delta =
                 DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
 
-            bool ideal_dropoff =
-                halite_around >= MAX_HALITE * game_map->width / 3;
+            bool ideal_dropoff = halite_around >= s * MAX_HALITE * 0.075;
             ideal_dropoff &= !local_dropoffs;
             ideal_dropoff &= game.turn_number <= MAX_TURNS * spawn_factor;
 
@@ -380,7 +379,6 @@ int main(int argc, char* argv[]) {
                 for (Position p : targets) {
                     MapCell* cell = game_map->at(p);
 
-                    // TODO: Cost function change might regress 4p.
                     double d = game_map->calculate_distance(ship->position, p);
                     double dd =
                         game_map->calculate_distance(p, cell->closest_base);
