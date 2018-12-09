@@ -130,8 +130,6 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
 
     const Halite end_mine =
         (game_map->at(ship->next)->halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
-    // log::log(ship->id, first_direction, (ship_halite + end_mine -
-    // burned_halite), t, (ship_halite + end_mine - burned_halite) / t);
     return {first_direction, (ship_halite + end_mine - burned_halite) / t};
 }
 
@@ -150,26 +148,17 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         return surrounding_cost;
     }
 
-    // TODO: Try taking 75p or the mean instead of the max.
     // Optimize values with random walks.
-    map<Direction, vector<double>> best_walk;
+    map<Direction, double> best_walk;
+    double best = 1.0;
     for (size_t i = 0; i < 500; ++i) {
         auto walk = random_walk(ship);
-        best_walk[walk.first].push_back(walk.second);
+        best_walk[walk.first] = max(best_walk[walk.first], walk.second);
+        best = max(best, walk.second);
     }
-    vector<Direction> d;
     for (auto& it : best_walk) {
-        d.push_back(it.first);
-        sort(it.second.begin(), it.second.end());
-    }
-    sort(d.begin(), d.end(), [&](Direction u, Direction v) {
-        return best_walk[u].back() > best_walk[v].back();
-        // return best_walk[u][best_walk[u].size() * 3 / 4] >
-        // best_walk[v][best_walk[v].size() * 3 / 4];
-    });
-    for (size_t i = 0; i < d.size(); ++i) {
-        Position pp = game_map->normalize(p.directional_offset(d[i]));
-        surrounding_cost[pp] = pow(1e2, i);
+        Position pp = game_map->normalize(p.directional_offset(it.first));
+        surrounding_cost[pp] = pow(1e3, 1 - it.second / best);
     }
 
     if (tasks[ship->id] == HARD_RETURN) surrounding_cost[p] = 1e7;
@@ -252,7 +241,7 @@ int main(int argc, char* argv[]) {
             ideal_dropoff &= !local_dropoffs;
             ideal_dropoff &= game.turn_number <= MAX_TURNS * spawn_factor;
             ideal_dropoff &=
-                me->ships.size() / (2.0 + me->dropoffs.size()) >= 7.5;
+                me->ships.size() / (2.0 + me->dropoffs.size()) >= 10;
 
             if (ideal_dropoff && delta <= me->halite) {
                 me->halite -= max(0, delta);
@@ -415,8 +404,8 @@ int main(int argc, char* argv[]) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd =
-                        game_map->calculate_distance(p, cell->closest_base);
+                    double dd = sqrt(
+                        game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite - dist[p];
                     if (cell->inspired)
@@ -438,8 +427,6 @@ int main(int argc, char* argv[]) {
                 advance(it, assignment[i]);
                 explorers[i]->next = *it;
                 message(explorers[i]->next, "green");
-                // log::log("ID:", explorers[i]->id, "LIVES:",
-                // explorers[i]->position, "GOAL:", explorers[i]->next);
             }
         }
 
@@ -522,6 +509,10 @@ int main(int argc, char* argv[]) {
                         me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() <= ship_hi + 5;
         should_spawn &= me->halite >= SHIP_COST + wanted_dropoff;
+
+#if 0
+        should_spawn &= me->ships.empty();
+#endif
 
         if (should_spawn) command_queue.push_back(me->shipyard->spawn());
 
