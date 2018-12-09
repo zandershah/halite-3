@@ -28,7 +28,9 @@ inline bool hard_stuck(shared_ptr<Ship> ship) {
 }
 
 inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
-    MapCell* cell = game.game_map->at(p);
+    unique_ptr<GameMap>& game_map = game.game_map;
+
+    MapCell* cell = game_map->at(p);
     if (!cell->is_occupied()) return true;
 
     bool safe = game.players.size() != 4;
@@ -36,29 +38,49 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     safe &= tasks[ship->id] == EXPLORE;
     safe &= ship->halite + MAX_HALITE / 2 <= cell->ship->halite;
 
-    return safe;
-}
+    if (!safe) return false;
 
-void dijkstras(position_map<Halite>& dist, vector<Position>& sources) {
-    for (vector<MapCell>& cell_row : game.game_map->cells) {
-        for (MapCell& map_cell : cell_row) {
-            dist[map_cell.position] = numeric_limits<Halite>::max();
+    // Estimate who is closer.
+    double votes = 0.0;
+    for (auto& it : game.me->ships) {
+        double d = game_map->calculate_distance(p, it.second->position);
+        votes -= d * d / game.me->ships.size();
+    }
+    for (auto& player : game.players) {
+        if (player->id != cell->ship->owner) continue;
+        for (auto& it : player->ships) {
+            double d = game_map->calculate_distance(p, it.second->position);
+            votes += d * d / player->ships.size();
         }
     }
-    priority_queue<pair<Halite, Position>> pq;
+    return votes >= 0;
+}
+
+template <typename F>
+void bfs(position_map<Halite>& dist, vector<Position>& sources, F f) {
+    for (vector<MapCell>& cell_row : game.game_map->cells)
+        for (MapCell& map_cell : cell_row) dist[map_cell.position] = -1;
+
+    queue<Position> q;
+    position_map<bool> vis;
     for (Position p : sources) {
-        pq.emplace(0, p);
+        q.push(p);
         dist[p] = 0;
     }
-    while (!pq.empty()) {
-        Position p = pq.top().second;
-        pq.pop();
+
+    while (!q.empty()) {
+        Position p = q.front();
+        q.pop();
+        if (vis[p]) continue;
+        vis[p] = true;
+
         const Halite cost = game.game_map->at(p)->halite / MOVE_COST_RATIO;
         for (Position pp : p.get_surrounding_cardinals()) {
             pp = game.game_map->normalize(pp);
-            if (dist[p] + cost < dist[pp]) {
+            if (vis[pp]) continue;
+            if (dist[pp] == -1 || f(dist[p] + cost, dist[pp])) {
                 dist[pp] = dist[p] + cost;
-                pq.emplace(-dist[pp], pp);
+                q.push(pp);
             }
         }
     }
@@ -128,8 +150,8 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     }
     vector<Direction> d;
     for (auto& it : best_walk) {
-        // log::log(ship->position, "->", ship->next, "First Step:", it.first,
-        // "Rate:", it.second);
+        // log::log(ship->position, "->", ship->next, "First Step:",
+        // it.first, "Rate:", it.second);
         d.push_back(it.first);
     }
     sort(d.begin(), d.end(),
@@ -215,9 +237,10 @@ int main(int argc, char* argv[]) {
             const Halite delta =
                 DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
 
-            bool ideal_dropoff = halite_around >= s * MAX_HALITE * 0.075;
+            bool ideal_dropoff = halite_around >= s * MAX_HALITE * 0.15;
             ideal_dropoff &= !local_dropoffs;
             ideal_dropoff &= game.turn_number <= MAX_TURNS * spawn_factor;
+            ideal_dropoff &= me->ships.size() / (2 + me->dropoffs.size()) >= 5;
 
             if (ideal_dropoff && delta <= me->halite) {
                 me->halite -= max(0, delta);
@@ -268,7 +291,7 @@ int main(int argc, char* argv[]) {
         // Approximate cost to base..
         vector<Position> sources = {me->shipyard->position};
         for (auto& it : me->dropoffs) sources.push_back(it.second->position);
-        dijkstras(cost_to_base, sources);
+        bfs(cost_to_base, sources, [&](double u, double v) { return u < v; });
 
         // Possible targets.
         set<Position> targets;
@@ -373,15 +396,15 @@ int main(int argc, char* argv[]) {
             for (auto& ship : explorers) {
                 position_map<Halite> dist;
                 vector<Position> source = {ship->position};
-                dijkstras(dist, source);
+                bfs(dist, source, [&](double u, double v) { return u < v; });
 
                 vector<double> cost;
                 for (Position p : targets) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd =
-                        game_map->calculate_distance(p, cell->closest_base);
+                    double dd = sqrt(
+                        game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite + dist[p];
                     if (cell->inspired)
