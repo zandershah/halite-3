@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
                 for (MapCell cell : cells) {
                     int d = game_map->calculate_distance(ship->position,
                                                          cell.position);
-                    if (d <= game_map->width / 16) {
+                    if (d <= game_map->width / 8) {
                         halite_around += cell.halite;
                         ++s;
                     }
