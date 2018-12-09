@@ -378,9 +378,11 @@ int main(int argc, char* argv[]) {
                     double dd = sqrt(
                         game_map->calculate_distance(p, cell->closest_base));
 
-                    Halite profit = cell->halite + dist[p] - cost_to_base[p];
+                    Halite profit = cell->halite + dist[p];
                     if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
+                    profit = min(profit, MAX_HALITE - ship->halite) -
+                             cost_to_base[p];
 
                     double rate = profit / max(1.0, d + dd);
 
