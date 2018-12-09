@@ -167,7 +167,7 @@ int main(int argc, char* argv[]) {
     }
 
     bool started_hard_return = false;
-    bool wanted_dropoff = false;
+    Halite wanted_dropoff = 0;
 
     for (;;) {
         auto begin = steady_clock::now();
@@ -193,8 +193,7 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            const int close =
-                game_map->width / (game.players.size() == 2 ? 3 : 4);
+            const int close = game_map->width / 3;
 
             bool local_dropoffs = false;
             for (auto& player : game.players) {
@@ -221,13 +220,16 @@ int main(int argc, char* argv[]) {
                 command_queue.push_back(ship->make_dropoff());
                 game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
                     game.my_id, -ship->id, ship->position.x, ship->position.y);
-                wanted_dropoff = true;
+                wanted_dropoff = 0;
 
                 log::log("Dropoff created at", ship->position);
 
                 me->ships.erase(it++);
             } else {
-                wanted_dropoff |= ideal_dropoff;
+                if (ideal_dropoff) {
+                    wanted_dropoff =
+                        wanted_dropoff ? min(wanted_dropoff, delta) : delta;
+                }
                 ++it;
             }
         }
@@ -277,7 +279,7 @@ int main(int argc, char* argv[]) {
                 Position p = it.second->position;
                 MapCell* cell = game_map->at(p);
 
-                if (game_map->calculate_distance(p, cell->closest_base) <= 3)
+                if (game_map->calculate_distance(p, cell->closest_base) <= 1)
                     continue;
 
                 if (game.players.size() == 4) targets.erase(p);
@@ -376,11 +378,9 @@ int main(int argc, char* argv[]) {
                     double dd = sqrt(
                         game_map->calculate_distance(p, cell->closest_base));
 
-                    Halite profit = cell->halite + dist[p];
+                    Halite profit = cell->halite + dist[p] - cost_to_base[p];
                     if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    profit = min(profit, MAX_HALITE - ship->halite) -
-                             cost_to_base[p];
 
                     double rate = profit / max(1.0, d + dd);
 
@@ -482,8 +482,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= game.turn_number <= MAX_TURNS * spawn_factor ||
                         me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() <= ship_hi + 5;
-        should_spawn &=
-            !wanted_dropoff || me->halite >= DROPOFF_COST + SHIP_COST;
+        should_spawn &= me->halite >= SHIP_COST + wanted_dropoff;
 
         if (should_spawn) command_queue.push_back(me->shipyard->spawn());
 
