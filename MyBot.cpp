@@ -181,15 +181,20 @@ int main(int argc, char* argv[]) {
         vector<Command> command_queue;
 
         log::log("Dropoffs.");
+#if 1
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
 
             Halite halite_around = 0;
+            size_t s = 0;
             for (vector<MapCell>& cells : game_map->cells) {
                 for (MapCell cell : cells) {
                     int d = game_map->calculate_distance(ship->position,
                                                          cell.position);
-                    if (d <= game_map->width / 8) halite_around += cell.halite;
+                    if (d <= game_map->width / 8) {
+                        halite_around += cell.halite;
+                        ++s;
+                    }
                 }
             }
 
@@ -233,6 +238,7 @@ int main(int argc, char* argv[]) {
                 ++it;
             }
         }
+#endif
 
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
@@ -374,15 +380,14 @@ int main(int argc, char* argv[]) {
                 for (Position p : targets) {
                     MapCell* cell = game_map->at(p);
 
+                    // TODO: Cost function change might regress 4p.
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd = sqrt(
-                        game_map->calculate_distance(p, cell->closest_base));
+                    double dd =
+                        game_map->calculate_distance(p, cell->closest_base);
 
-                    Halite profit = cell->halite + dist[p];
+                    Halite profit = cell->halite + dist[p] - cost_to_base[p];
                     if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    profit = min(profit, MAX_HALITE - ship->halite) -
-                             cost_to_base[p];
 
                     double rate = profit / max(1.0, d + dd);
 
