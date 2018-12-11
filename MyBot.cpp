@@ -528,6 +528,9 @@ int main(int argc, char* argv[]) {
             fout.open("replays/__flog.json");
             fout << "[\n" << flog.str();
             fout.close();
+            log::log("Total Rate:", (me->halite + me->ships.size() * SHIP_COST +
+                                     me->dropoffs.size() * DROPOFF_COST) *
+                                        1.0 / MAX_TURNS);
         }
 
         if (!game.end_turn(command_queue)) break;
