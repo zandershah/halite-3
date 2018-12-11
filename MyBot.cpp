@@ -218,7 +218,7 @@ int main(int argc, char* argv[]) {
     spawn_factor = SPAWN_FACTORS[game.players.size() / 2 - 1]
                                 [game.game_map->width / 8 - 4];
 
-    unordered_map<EntityId, int> last_seen;
+    unordered_map<EntityId, Halite> last_halite;
     double ewma = MAX_HALITE;
 
     bool started_hard_return = false;
@@ -482,17 +482,19 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        vector<Position> bases = {me->shipyard->position};
-        for (auto& it : me->dropoffs) bases.push_back(it.second->position);
-        for (Position p : bases) {
-            MapCell* cell = game_map->at(p);
-            if (!cell->is_occupied() || tasks[cell->ship->id] == EXPLORE)
-                continue;
-            int t = game.turn_number - last_seen[cell->ship->id];
-            last_seen[cell->ship->id] = game.turn_number;
-            ewma = ALPHA * cell->ship->halite / t + (1 - ALPHA) * ewma;
+        if (game.turn_number % 10 == 0) {
+            Halite h = 0;
+            for (auto& it : me->ships) {
+                auto ship = it.second;
+                h += ship->halite;
+                if (ship->halite >= last_halite[ship->id])
+                    h -= last_halite[ship->id];
+                last_halite[ship->id] = ship->halite;
+            }
+            ewma = ALPHA * h / (me->ships.size() * 10) + (1 - ALPHA) * ewma;
         }
-        log::log("EWMA:", ewma);
+        bool should_spawn_ewma = game.turn_number + SHIP_COST / ewma < MAX_TURNS;
+        log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
         size_t ship_lo = 0, ship_hi = numeric_limits<short>::max();
@@ -511,7 +513,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
 
-        should_spawn &= game.turn_number <= MAX_TURNS * spawn_factor ||
+        should_spawn &= should_spawn_ewma ||
                         me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() <= ship_hi + 5;
         should_spawn &= me->halite >= SHIP_COST + wanted_dropoff;
@@ -520,7 +522,10 @@ int main(int argc, char* argv[]) {
         should_spawn &= me->ships.empty();
 #endif
 
-        if (should_spawn) command_queue.push_back(me->shipyard->spawn());
+        if (should_spawn) {
+            command_queue.push_back(me->shipyard->spawn());
+            log::log("Spawning ship!");
+        }
 
         if (game.turn_number == MAX_TURNS && game.my_id == 0) {
             log::log("Done!");
@@ -528,9 +533,6 @@ int main(int argc, char* argv[]) {
             fout.open("replays/__flog.json");
             fout << "[\n" << flog.str();
             fout.close();
-            log::log("Total Rate:", (me->halite + me->ships.size() * SHIP_COST +
-                                     me->dropoffs.size() * DROPOFF_COST) *
-                                        1.0 / MAX_TURNS);
         }
 
         if (!game.end_turn(command_queue)) break;
