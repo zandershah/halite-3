@@ -15,6 +15,19 @@ using position_map = unordered_map<Position, V>;
 Game game;
 unordered_map<EntityId, Task> tasks;
 
+double HALITE_RETURN;
+// For ewma.
+const double ALPHA = 0.30;
+const size_t MAX_WALKS = 500;
+
+const double SPAWN_FACTORS[2][5] = {{0.35, 0.45, 0.525, 0.55, 0.625},
+                                    {0.3, 0.375, 0.475, 0.475, 0.5}};
+double spawn_factor;
+
+inline Halite extracted(Halite h) {
+    return (h + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+}
+
 // Fluorine JSON.
 stringstream flog;
 void message(Position p, string c) {
@@ -59,7 +72,7 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 template <typename F>
 void bfs(position_map<Halite>& dist, vector<Position>& sources, F f) {
     for (vector<MapCell>& cell_row : game.game_map->cells)
-        for (MapCell& map_cell : cell_row) dist[map_cell.position] = -1;
+        for (MapCell& cell : cell_row) dist[cell.position] = -1;
 
     queue<Position> q;
     position_map<bool> vis;
@@ -105,7 +118,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
         if (d == Direction::STILL) {
-            Halite mined = (map_halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+            Halite mined = extracted(map_halite);
             mined = min(mined, MAX_HALITE - ship_halite);
             ship_halite += mined;
             if (game.game_map->at(p)->inspired) {
@@ -122,14 +135,12 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
             burned_halite += burned;
         }
 
-        if (tasks[ship->id] == EXPLORE && ship_halite > MAX_HALITE * 0.95)
-            break;
+        if (tasks[ship->id] == EXPLORE && ship_halite > HALITE_RETURN) break;
     }
 
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    const Halite end_mine =
-        (game_map->at(ship->next)->halite + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
+    const Halite end_mine = extracted(game_map->at(ship->next)->halite);
     return {first_direction, (ship_halite + end_mine - burned_halite) / t};
 }
 
@@ -151,7 +162,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     // Optimize values with random walks.
     map<Direction, double> best_walk;
     double best = 1.0;
-    for (size_t i = 0; i < 500; ++i) {
+    for (size_t i = 0; i < MAX_WALKS; ++i) {
         auto walk = random_walk(ship);
         best_walk[walk.first] = max(best_walk[walk.first], walk.second);
         best = max(best, walk.second);
@@ -166,27 +177,49 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     return surrounding_cost;
 }
 
+bool ideal_dropoff(Position p) {
+    unique_ptr<GameMap>& game_map = game.game_map;
+
+    Halite halite_around = 0;
+    size_t s = 0;
+    for (vector<MapCell>& cells : game_map->cells) {
+        for (MapCell cell : cells) {
+            int d = game_map->calculate_distance(p, cell.position);
+            if (d <= game_map->width / 8) {
+                halite_around += cell.halite;
+                ++s;
+            }
+        }
+    }
+
+    const int close = game_map->width / 4;
+
+    bool local_dropoffs = false;
+    for (auto& player : game.players) {
+        int d = game_map->calculate_distance(p, player->shipyard->position);
+        local_dropoffs |= d <= close;
+        for (auto& it : player->dropoffs) {
+            d = game_map->calculate_distance(p, it.second->position);
+            local_dropoffs |= d <= close;
+        }
+    }
+
+    bool ideal = halite_around >= s * MAX_HALITE * 0.15;
+    ideal &= !local_dropoffs;
+    ideal &= game.turn_number <= MAX_TURNS * spawn_factor;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
+    return ideal;
+}
+
 int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
-    double spawn_factor;
-    {
-        unordered_map<int, unordered_map<int, double>> f;
+    HALITE_RETURN = MAX_HALITE * 0.95;
+    spawn_factor = SPAWN_FACTORS[game.players.size() / 2 - 1]
+                                [game.game_map->width / 8 - 4];
 
-        f[32][2] = 0.35;
-        f[40][2] = 0.45;
-        f[48][2] = 0.525;
-        f[56][2] = 0.55;
-        f[64][2] = 0.625;
-
-        f[32][4] = 0.3;
-        f[40][4] = 0.375;
-        f[48][4] = 0.475;
-        f[56][4] = 0.475;
-        f[64][4] = 0.5;
-
-        spawn_factor = f[game.game_map->width][game.players.size()];
-    }
+    unordered_map<EntityId, int> last_seen;
+    double ewma = MAX_HALITE;
 
     bool started_hard_return = false;
     Halite wanted_dropoff = 0;
@@ -198,8 +231,6 @@ int main(int argc, char* argv[]) {
         shared_ptr<Player> me = game.me;
         unique_ptr<GameMap>& game_map = game.game_map;
 
-        position_map<Halite> cost_to_base;
-
         vector<Command> command_queue;
 
         log::log("Dropoffs.");
@@ -207,43 +238,11 @@ int main(int argc, char* argv[]) {
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
 
-            Halite halite_around = 0;
-            size_t s = 0;
-            for (vector<MapCell>& cells : game_map->cells) {
-                for (MapCell cell : cells) {
-                    int d = game_map->calculate_distance(ship->position,
-                                                         cell.position);
-                    if (d <= game_map->width / 8) {
-                        halite_around += cell.halite;
-                        ++s;
-                    }
-                }
-            }
-
-            const int close = game_map->width / 4;
-
-            bool local_dropoffs = false;
-            for (auto& player : game.players) {
-                int d = game_map->calculate_distance(
-                    ship->position, player->shipyard->position);
-                local_dropoffs |= d <= close;
-                for (auto& it : player->dropoffs) {
-                    d = game_map->calculate_distance(ship->position,
-                                                     it.second->position);
-                    local_dropoffs |= d <= close;
-                }
-            }
-
+            bool ideal = ideal_dropoff(ship->position);
             const Halite delta =
                 DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
 
-            bool ideal_dropoff = halite_around >= s * MAX_HALITE * 0.15;
-            ideal_dropoff &= !local_dropoffs;
-            ideal_dropoff &= game.turn_number <= MAX_TURNS * spawn_factor;
-            ideal_dropoff &=
-                me->ships.size() / (2.0 + me->dropoffs.size()) >= 10;
-
-            if (ideal_dropoff && delta <= me->halite) {
+            if (ideal && delta <= me->halite) {
                 me->halite -= max(0, delta);
                 command_queue.push_back(ship->make_dropoff());
                 game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
@@ -254,7 +253,7 @@ int main(int argc, char* argv[]) {
 
                 me->ships.erase(it++);
             } else {
-                if (ideal_dropoff) {
+                if (ideal) {
                     wanted_dropoff =
                         wanted_dropoff ? min(wanted_dropoff, delta) : delta;
                 }
@@ -288,11 +287,6 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-
-        // Approximate cost to base..
-        vector<Position> sources = {me->shipyard->position};
-        for (auto& it : me->dropoffs) sources.push_back(it.second->position);
-        bfs(cost_to_base, sources, [&](double u, double v) { return u < v; });
 
         // Possible targets.
         set<Position> targets;
@@ -329,7 +323,7 @@ int main(int argc, char* argv[]) {
 
         bool all_empty = true;
         for (vector<MapCell>& cell_row : game_map->cells)
-            for (MapCell& map_cell : cell_row) all_empty &= !map_cell.halite;
+            for (MapCell& cell : cell_row) all_empty &= !cell.halite;
 
         for (auto& it : me->ships) {
             shared_ptr<Ship> ship = it.second;
@@ -353,7 +347,7 @@ int main(int argc, char* argv[]) {
 
             switch (tasks[id]) {
                 case EXPLORE:
-                    if (ship->halite > MAX_HALITE * 0.95) tasks[id] = RETURN;
+                    if (ship->halite > HALITE_RETURN) tasks[id] = RETURN;
                     break;
                 case RETURN:
                     if (!closest_base_dist) tasks[id] = EXPLORE;
@@ -487,6 +481,18 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+
+        vector<Position> bases = {me->shipyard->position};
+        for (auto& it : me->dropoffs) bases.push_back(it.second->position);
+        for (Position p : bases) {
+            MapCell* cell = game_map->at(p);
+            if (!cell->is_occupied() || tasks[cell->ship->id] == EXPLORE)
+                continue;
+            int t = game.turn_number - last_seen[cell->ship->id];
+            last_seen[cell->ship->id] = game.turn_number;
+            ewma = ALPHA * cell->ship->halite / t + (1 - ALPHA) * ewma;
+        }
+        log::log("EWMA:", ewma);
 
         log::log("Spawn ships.");
         size_t ship_lo = 0, ship_hi = numeric_limits<short>::max();
