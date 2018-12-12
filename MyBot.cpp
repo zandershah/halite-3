@@ -140,7 +140,13 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
 
     if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
-    const Halite end_mine = extracted(game_map->at(ship->next)->halite);
+    Halite end_mine = 0;
+    if (p == ship->next) {
+      end_mine = extracted(game_map->at(ship->next)->halite);
+      if (game_map->at(p)->inspired)
+        end_mine += INSPIRED_BONUS_MULTIPLIER * end_mine;
+    }
+
     return {first_direction, (ship_halite + end_mine - burned_halite) / t};
 }
 
@@ -514,7 +520,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
 
-        should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
+        should_spawn &= game.turn_number < MAX_TURNS * spawn_factor || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() <= ship_hi + 5;
         should_spawn &= me->halite >= SHIP_COST + wanted_dropoff;
 
