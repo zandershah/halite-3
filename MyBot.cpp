@@ -493,7 +493,8 @@ int main(int argc, char* argv[]) {
             }
             ewma = ALPHA * h / (me->ships.size() * 10) + (1 - ALPHA) * ewma;
         }
-        bool should_spawn_ewma = game.turn_number + SHIP_COST / ewma < MAX_TURNS;
+        bool should_spawn_ewma =
+            game.turn_number + SHIP_COST / ewma < MAX_TURNS;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
@@ -513,8 +514,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
 
-        should_spawn &= should_spawn_ewma ||
-                        me->ships.size() < ship_lo;
+        should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() <= ship_hi + 5;
         should_spawn &= me->halite >= SHIP_COST + wanted_dropoff;
 
