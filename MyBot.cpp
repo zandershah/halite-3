@@ -191,7 +191,7 @@ bool ideal_dropoff(Position p) {
     for (vector<MapCell>& cells : game_map->cells) {
         for (MapCell cell : cells) {
             int d = game_map->calculate_distance(p, cell.position);
-            if (d <= game_map->width / 8) {
+            if (d <= 4) {
                 halite_around += cell.halite;
                 ++s;
             }
