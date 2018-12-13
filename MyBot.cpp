@@ -210,8 +210,6 @@ bool ideal_dropoff(Position p) {
 int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
-    HALITE_RETURN = MAX_HALITE * 0.95;
-
     unordered_map<EntityId, Halite> last_halite;
 
     bool started_hard_return = false;
@@ -224,6 +222,10 @@ int main(int argc, char* argv[]) {
         unique_ptr<GameMap>& game_map = game.game_map;
 
         vector<Command> command_queue;
+
+        HALITE_RETURN = MAX_HALITE * 0.95;
+        if (should_spawn_ewma && game.players.size() == 2)
+            HALITE_RETURN = MAX_HALITE * 0.75;
 
         log::log("Dropoffs.");
 #if 1
