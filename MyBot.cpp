@@ -54,14 +54,14 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     // Estimate who is closer.
     double votes = 0.0;
     for (auto& it : game.me->ships) {
-        int d = game_map->calculate_distance(p, it.second->position);
-        votes += 1.0 / (d * d);
+        double d = game_map->calculate_distance(p, it.second->position);
+        votes -= d * d / game.me->ships.size();
     }
     for (auto& player : game.players) {
         if (player->id != cell->ship->owner) continue;
         for (auto& it : player->ships) {
-            int d = game_map->calculate_distance(p, it.second->position);
-            votes -= 1.0 / (d * d);
+            double d = game_map->calculate_distance(p, it.second->position);
+            votes += d * d / player->ships.size();
         }
     }
     return votes >= 0;
