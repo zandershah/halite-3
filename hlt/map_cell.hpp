@@ -15,9 +15,9 @@ struct MapCell {
     // then it's a shipyard, otherwise it's a dropoff.
     std::shared_ptr<Entity> structure;
 
-    Halite cost_to_base = std::numeric_limits<Halite>::max();
     Position closest_base;
     bool inspired = false;
+    size_t close_ships = 0;
 
     MapCell(int x, int y, Halite halite)
         : position(x, y), halite(halite), closest_base(position) {}

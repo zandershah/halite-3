@@ -204,7 +204,7 @@ bool ideal_dropoff(Position p) {
 
     bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
-    ideal &= game.turn_number <= MAX_TURNS - 150;
+    ideal &= game.turn_number <= MAX_TURNS - 100;
     ideal &= !started_hard_return;
     ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
     return ideal;
@@ -267,7 +267,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
                 cell.inspired = close_enemies >= INSPIRATION_SHIP_COUNT;
-
+                cell.close_ships = 0;
                 cell.closest_base = me->shipyard->position;
                 for (auto& it : me->dropoffs) {
                     if (game_map->calculate_distance(p, it.second->position) <
@@ -276,6 +276,9 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+        }
+        for (auto& it : me->ships) {
+          ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
         }
 
         // Possible targets.
@@ -336,8 +339,8 @@ int main(int argc, char* argv[]) {
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
-            int return_estimate =
-                game.turn_number + closest_base_dist + me->ships.size() * 0.3;
+            int return_estimate = game.turn_number + closest_base_dist;
+            return_estimate += game_map->at(cell->closest_base)->close_ships * 0.3;
             // TODO: Dry run of return.
             if (all_empty || return_estimate >= MAX_TURNS) {
                 tasks[id] = HARD_RETURN;
