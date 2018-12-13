@@ -20,10 +20,7 @@ const size_t MAX_WALKS = 500;
 
 const double ALPHA = 0.30;
 double ewma = MAX_HALITE;
-
-const double SPAWN_FACTORS[2][5] = {{0.35, 0.45, 0.525, 0.55, 0.625},
-                                    {0.3, 0.375, 0.475, 0.475, 0.5}};
-double spawn_factor;
+bool should_spawn_ewma = true;
 
 inline Halite extracted(Halite h) {
     return (h + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
@@ -213,7 +210,7 @@ bool ideal_dropoff(Position p) {
 
     bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
-    ideal &= game.turn_number <= MAX_TURNS * spawn_factor;
+    ideal &= should_spawn_ewma;
     ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
     return ideal;
 }
@@ -222,8 +219,6 @@ int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
-    spawn_factor = SPAWN_FACTORS[game.players.size() / 2 - 1]
-                                [game.game_map->width / 8 - 4];
 
     unordered_map<EntityId, Halite> last_halite;
 
@@ -501,8 +496,7 @@ int main(int argc, char* argv[]) {
             }
             ewma = ALPHA * h / (me->ships.size() * 10) + (1 - ALPHA) * ewma;
         }
-        bool should_spawn_ewma =
-            game.turn_number + SHIP_COST / ewma < MAX_TURNS;
+        should_spawn_ewma = game.turn_number + SHIP_COST / ewma < MAX_TURNS;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
