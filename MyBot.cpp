@@ -67,29 +67,24 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     return votes >= 0;
 }
 
-template <typename F>
-void bfs(position_map<Halite>& dist, Position source, F f) {
-    for (vector<MapCell>& cell_row : game.game_map->cells)
-        for (MapCell& cell : cell_row) dist[cell.position] = -1;
-
-    queue<Position> q;
-    position_map<bool> vis;
-    q.push(source);
+void dijkstras(position_map<Halite>& dist, Position source) {
+    for (vector<MapCell>& cell_row : game.game_map->cells) {
+        for (MapCell& map_cell : cell_row) {
+            dist[map_cell.position] = numeric_limits<Halite>::max();
+        }
+    }
+    priority_queue<pair<Halite, Position>> pq;
+    pq.emplace(0, source);
     dist[source] = 0;
-
-    while (!q.empty()) {
-        Position p = q.front();
-        q.pop();
-        if (vis[p]) continue;
-        vis[p] = true;
-
+    while (!pq.empty()) {
+        Position p = pq.top().second;
+        pq.pop();
         const Halite cost = game.game_map->at(p)->halite / MOVE_COST_RATIO;
         for (Position pp : p.get_surrounding_cardinals()) {
             pp = game.game_map->normalize(pp);
-            if (vis[pp]) continue;
-            if (dist[pp] == -1 || f(dist[p] + cost, dist[pp])) {
+            if (dist[p] + cost < dist[pp]) {
                 dist[pp] = dist[p] + cost;
-                q.push(pp);
+                pq.emplace(-dist[pp], pp);
             }
         }
     }
@@ -396,8 +391,7 @@ int main(int argc, char* argv[]) {
             vector<vector<double>> cost_matrix;
             for (auto& ship : explorers) {
                 position_map<Halite> dist;
-                bfs(dist, ship->position,
-                    [&](double u, double v) { return u < v; });
+                dijkstras(dist, ship->position);
 
                 vector<double> cost;
                 for (Position p : targets) {
