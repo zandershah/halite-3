@@ -202,13 +202,15 @@ bool ideal_dropoff(Position p) {
 
     bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
-    ideal &= game.turn_number <= 0.5 * MAX_TURNS;
-    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
+    ideal &= game.turn_number <= 0.666 * MAX_TURNS;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
     return ideal;
 }
 
 int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
+
+    HALITE_RETURN = MAX_HALITE * 0.95;
 
     unordered_map<EntityId, Halite> last_halite;
 
@@ -222,10 +224,6 @@ int main(int argc, char* argv[]) {
         unique_ptr<GameMap>& game_map = game.game_map;
 
         vector<Command> command_queue;
-
-        HALITE_RETURN = MAX_HALITE * 0.95;
-        if (should_spawn_ewma && game.players.size() == 2)
-            HALITE_RETURN = MAX_HALITE * 0.75;
 
         log::log("Dropoffs.");
 #if 1
