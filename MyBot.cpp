@@ -68,16 +68,14 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 }
 
 template <typename F>
-void bfs(position_map<Halite>& dist, vector<Position>& sources, F f) {
+void bfs(position_map<Halite>& dist, Position source, F f) {
     for (vector<MapCell>& cell_row : game.game_map->cells)
         for (MapCell& cell : cell_row) dist[cell.position] = -1;
 
     queue<Position> q;
     position_map<bool> vis;
-    for (Position p : sources) {
-        q.push(p);
-        dist[p] = 0;
-    }
+    q.push(source);
+    dist[source] = 0;
 
     while (!q.empty()) {
         Position p = q.front();
@@ -402,8 +400,8 @@ int main(int argc, char* argv[]) {
             vector<vector<double>> cost_matrix;
             for (auto& ship : explorers) {
                 position_map<Halite> dist;
-                vector<Position> source = {ship->position};
-                bfs(dist, source, [&](double u, double v) { return u < v; });
+                bfs(dist, ship->position,
+                    [&](double u, double v) { return u < v; });
 
                 vector<double> cost;
                 for (Position p : targets) {
@@ -414,7 +412,9 @@ int main(int argc, char* argv[]) {
                         game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite - dist[p];
-                    if (cell->inspired)
+                    bool should_inspire =
+                        game.players.size() == 4 || d <= INSPIRATION_RADIUS;
+                    if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
 
                     double rate = profit / max(1.0, d + dd);
