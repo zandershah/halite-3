@@ -197,7 +197,6 @@ bool ideal_dropoff(Position p) {
     }
 
     const int close = game_map->width / 4;
-
     bool local_dropoffs = false;
     for (auto& player : game.players) {
         int d = game_map->calculate_distance(p, player->shipyard->position);
@@ -300,21 +299,30 @@ int main(int argc, char* argv[]) {
         for (auto& player : game.players) {
             if (player->id == me->id) continue;
             for (auto& it : player->ships) {
-                Position p = it.second->position;
+                auto ship = it.second;
+                Position p = ship->position;
                 MapCell* cell = game_map->at(p);
 
                 if (game_map->calculate_distance(p, cell->closest_base) <= 1)
                     continue;
 
                 if (game.players.size() == 4) targets.erase(p);
-                cell->mark_unsafe(it.second);
+                if (!cell->is_occupied() ||
+                    cell->ship->halite < it.second->halite) {
+                    cell->mark_unsafe(it.second);
+                }
 
                 if (hard_stuck(it.second)) continue;
 
                 for (Position pp : p.get_surrounding_cardinals()) {
                     if (game.players.size() == 4)
                         targets.erase(game_map->normalize(pp));
-                    game_map->at(pp)->mark_unsafe(it.second);
+                    cell = game_map->at(pp);
+
+                    if (!cell->is_occupied() ||
+                        cell->ship->halite < it.second->halite) {
+                        cell->mark_unsafe(it.second);
+                    }
                 }
             }
         }
