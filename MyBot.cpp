@@ -207,7 +207,7 @@ bool ideal_dropoff(Position p) {
 
     bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
-    ideal &= should_spawn_ewma;
+    ideal &= game.turn_number <= 0.5 * MAX_TURNS;
     ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
     return ideal;
 }
