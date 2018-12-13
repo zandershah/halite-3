@@ -22,6 +22,8 @@ const double ALPHA = 0.30;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
+bool started_hard_return = false;
+
 inline Halite extracted(Halite h) {
     return (h + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
 }
@@ -202,7 +204,8 @@ bool ideal_dropoff(Position p) {
 
     bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
-    ideal &= game.turn_number <= MAX_TURNS - 50;
+    ideal &= game.turn_number <= MAX_TURNS - 150;
+    ideal &= !started_hard_return;
     ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
     return ideal;
 }
@@ -213,8 +216,6 @@ int main(int argc, char* argv[]) {
     HALITE_RETURN = MAX_HALITE * 0.95;
 
     unordered_map<EntityId, Halite> last_halite;
-
-    bool started_hard_return = false;
 
     for (;;) {
         auto begin = steady_clock::now();
