@@ -16,9 +16,10 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
-// For ewma.
-const double ALPHA = 0.30;
 const size_t MAX_WALKS = 500;
+
+const double ALPHA = 0.30;
+double ewma = MAX_HALITE;
 
 const double SPAWN_FACTORS[2][5] = {{0.35, 0.45, 0.525, 0.55, 0.625},
                                     {0.3, 0.375, 0.475, 0.475, 0.5}};
@@ -142,9 +143,9 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
 
     Halite end_mine = 0;
     if (p == ship->next) {
-      end_mine = extracted(game_map->at(ship->next)->halite);
-      if (game_map->at(p)->inspired)
-        end_mine += INSPIRED_BONUS_MULTIPLIER * end_mine;
+        end_mine = extracted(game_map->at(ship->next)->halite);
+        if (game_map->at(p)->inspired)
+            end_mine += INSPIRED_BONUS_MULTIPLIER * end_mine;
     }
 
     return {first_direction, (ship_halite + end_mine - burned_halite) / t};
@@ -225,7 +226,6 @@ int main(int argc, char* argv[]) {
                                 [game.game_map->width / 8 - 4];
 
     unordered_map<EntityId, Halite> last_halite;
-    double ewma = MAX_HALITE;
 
     bool started_hard_return = false;
     Halite wanted_dropoff = 0;
@@ -356,7 +356,10 @@ int main(int argc, char* argv[]) {
                     if (ship->halite > HALITE_RETURN) tasks[id] = RETURN;
                     break;
                 case RETURN:
-                    if (!closest_base_dist) tasks[id] = EXPLORE;
+                    if (!closest_base_dist) {
+                        tasks[id] = EXPLORE;
+                        last_halite[id] = 0;
+                    }
                 case HARD_RETURN:
                     break;
             }
@@ -492,9 +495,8 @@ int main(int argc, char* argv[]) {
             Halite h = 0;
             for (auto& it : me->ships) {
                 auto ship = it.second;
-                h += ship->halite;
                 if (ship->halite >= last_halite[ship->id])
-                    h -= last_halite[ship->id];
+                    h = ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
             ewma = ALPHA * h / (me->ships.size() * 10) + (1 - ALPHA) * ewma;
@@ -520,7 +522,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
 
-        should_spawn &= game.turn_number < MAX_TURNS * spawn_factor || me->ships.size() < ship_lo;
+        should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() <= ship_hi + 5;
         should_spawn &= me->halite >= SHIP_COST + wanted_dropoff;
 
