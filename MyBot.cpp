@@ -207,7 +207,7 @@ bool ideal_dropoff(Position p) {
 
     bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
-    ideal &= should_spawn_ewma;
+    ideal &= game.turn_number <= 0.5 * MAX_TURNS;
     ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
     return ideal;
 }
@@ -220,7 +220,6 @@ int main(int argc, char* argv[]) {
     unordered_map<EntityId, Halite> last_halite;
 
     bool started_hard_return = false;
-    Halite wanted_dropoff = 0;
 
     for (;;) {
         auto begin = steady_clock::now();
@@ -233,6 +232,7 @@ int main(int argc, char* argv[]) {
 
         log::log("Dropoffs.");
 #if 1
+        Halite wanted = 0;
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
 
@@ -245,16 +245,12 @@ int main(int argc, char* argv[]) {
                 command_queue.push_back(ship->make_dropoff());
                 game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
                     game.my_id, -ship->id, ship->position.x, ship->position.y);
-                wanted_dropoff = 0;
 
                 log::log("Dropoff created at", ship->position);
 
                 me->ships.erase(it++);
             } else {
-                if (ideal) {
-                    wanted_dropoff =
-                        wanted_dropoff ? min(wanted_dropoff, delta) : delta;
-                }
+                if (ideal) wanted = wanted ? min(wanted, delta) : delta;
                 ++it;
             }
         }
@@ -520,13 +516,12 @@ int main(int argc, char* argv[]) {
             ship_lo /= (game.players.size() - 1);
         }
 
-        bool should_spawn = me->halite >= SHIP_COST;
+        bool should_spawn = me->halite >= SHIP_COST + wanted;
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() <= ship_hi + 5;
-        should_spawn &= me->halite >= SHIP_COST + wanted_dropoff;
 
 #if 0
         should_spawn &= me->ships.empty();
