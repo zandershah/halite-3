@@ -54,14 +54,14 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     // Estimate who is closer.
     double votes = 0.0;
     for (auto& it : game.me->ships) {
-        double d = game_map->calculate_distance(p, it.second->position);
-        votes -= d * d / game.me->ships.size();
+        int d = game_map->calculate_distance(p, it.second->position);
+        votes += 1.0 / (d * d);
     }
     for (auto& player : game.players) {
         if (player->id != cell->ship->owner) continue;
         for (auto& it : player->ships) {
-            double d = game_map->calculate_distance(p, it.second->position);
-            votes += d * d / player->ships.size();
+            int d = game_map->calculate_distance(p, it.second->position);
+            votes -= 1.0 / (d * d);
         }
     }
     return votes >= 0;
@@ -202,7 +202,7 @@ bool ideal_dropoff(Position p) {
 
     bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
-    ideal &= game.turn_number <= 0.666 * MAX_TURNS;
+    ideal &= game.turn_number <= MAX_TURNS - 50;
     ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
     return ideal;
 }
