@@ -70,20 +70,21 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 }
 
 void dijkstras(position_map<Halite>& dist, Position source) {
-    for (vector<MapCell>& cell_row : game.game_map->cells) {
-        for (MapCell& map_cell : cell_row) {
-            dist[map_cell.position] = numeric_limits<Halite>::max();
-        }
-    }
+    unique_ptr<GameMap>& game_map = game.game_map;
+
+    for (vector<MapCell>& cell_row : game_map->cells)
+        for (MapCell& map_cell : cell_row) dist[map_cell.position] = 1e6;
+
     priority_queue<pair<Halite, Position>> pq;
     pq.emplace(0, source);
     dist[source] = 0;
     while (!pq.empty()) {
         Position p = pq.top().second;
         pq.pop();
-        const Halite cost = game.game_map->at(p)->halite / MOVE_COST_RATIO;
+        const Halite cost = game_map->at(p)->halite / MOVE_COST_RATIO;
         for (Position pp : p.get_surrounding_cardinals()) {
-            pp = game.game_map->normalize(pp);
+            pp = game_map->normalize(pp);
+            if (game_map->at(pp)->is_occupied()) continue;
             if (dist[p] + cost < dist[pp]) {
                 dist[pp] = dist[p] + cost;
                 pq.emplace(-dist[pp], pp);
@@ -488,27 +489,24 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (game.turn_number % 10 == 0) {
+        if (game.turn_number % 5 == 0) {
             Halite h = 0;
-            for (auto& it : me->ships) {
-                auto ship = it.second;
+            for (auto ship : explorers) {
                 if (ship->halite >= last_halite[ship->id])
                     h = ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
-            ewma = ALPHA * h / (me->ships.size() * 10) + (1 - ALPHA) * ewma;
+            ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma = game.turn_number + SHIP_COST / ewma < MAX_TURNS;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
-        size_t ship_lo = 0, ship_hi = numeric_limits<short>::max();
+        size_t ship_lo = 0;
         // TODO: Smarter counter of mid-game aggression.
         if (!started_hard_return) {
-            ship_hi = 0;
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
-                ship_hi = max(ship_hi, player->ships.size());
                 ship_lo += player->ships.size();
             }
             ship_lo /= (game.players.size() - 1);
@@ -519,7 +517,6 @@ int main(int argc, char* argv[]) {
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
-        should_spawn &= me->ships.size() <= ship_hi + 5;
 
 #if 0
         should_spawn &= me->ships.empty();
