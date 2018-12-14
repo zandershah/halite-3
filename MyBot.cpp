@@ -193,19 +193,26 @@ bool ideal_dropoff(Position p) {
     }
 
     const int close = game_map->width / 3;
-    bool local_dropoffs = false;
+    bool local_dropoffs =
+        game_map->calculate_distance(p, game.me->shipyard->position) <= close;
+    for (auto& it : game.me->dropoffs) {
+        local_dropoffs |=
+            game_map->calculate_distance(p, it.second->position) <= close;
+    }
     for (auto& player : game.players) {
-        int d = game_map->calculate_distance(p, player->shipyard->position);
-        local_dropoffs |= d <= close;
+        if (player->id == game.me->id) continue;
+
+        local_dropoffs |=
+            !game_map->calculate_distance(p, player->shipyard->position);
         for (auto& it : player->dropoffs) {
-            d = game_map->calculate_distance(p, it.second->position);
-            local_dropoffs |= d <= close;
+            local_dropoffs |=
+                !game_map->calculate_distance(p, it.second->position);
         }
     }
 
-    bool ideal = halite_around >= s * MAX_HALITE * 0.15;
+    bool ideal = halite_around >= s * MAX_HALITE * 0.125;
     ideal &= !local_dropoffs;
-    ideal &= game.turn_number <= MAX_TURNS - 100;
+    ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
     ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
     return ideal;
@@ -279,7 +286,7 @@ int main(int argc, char* argv[]) {
             }
         }
         for (auto& it : me->ships) {
-          ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
+            ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
         }
 
         // Possible targets.
@@ -341,7 +348,8 @@ int main(int argc, char* argv[]) {
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
             int return_estimate = game.turn_number + closest_base_dist;
-            return_estimate += game_map->at(cell->closest_base)->close_ships * 0.3;
+            return_estimate +=
+                game_map->at(cell->closest_base)->close_ships * 0.3;
             // TODO: Dry run of return.
             if (all_empty || return_estimate >= MAX_TURNS) {
                 tasks[id] = HARD_RETURN;
