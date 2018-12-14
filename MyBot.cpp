@@ -18,11 +18,13 @@ unordered_map<EntityId, Task> tasks;
 double HALITE_RETURN;
 const size_t MAX_WALKS = 500;
 
-const double ALPHA = 0.30;
+const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
 bool started_hard_return = false;
+
+unordered_map<EntityId, int> last_moved;
 
 inline Halite extracted(Halite h) {
     return (h + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
@@ -49,7 +51,7 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     bool safe = game.players.size() != 4;
     safe &= ship->owner != cell->ship->owner;
     safe &= tasks[ship->id] == EXPLORE;
-    safe &= ship->halite + MAX_HALITE / 2 <= cell->ship->halite;
+    safe &= ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
 
     if (!safe) return false;
 
@@ -84,6 +86,10 @@ void dijkstras(position_map<Halite>& dist, Position source) {
         const Halite cost = game_map->at(p)->halite / MOVE_COST_RATIO;
         for (Position pp : p.get_surrounding_cardinals()) {
             pp = game_map->normalize(pp);
+            if (game_map->calculate_distance(source, pp) <=
+                game_map->calculate_distance(source, p)) {
+                continue;
+            }
             if (game_map->at(pp)->is_occupied()) continue;
             if (dist[p] + cost < dist[pp]) {
                 dist[pp] = dist[p] + cost;
@@ -108,6 +114,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
     for (; p != ship->next; ++t) {
         auto moves =
             game_map->get_moves(p, ship->next, ship_halite, map_halite);
+
         Direction d = moves[rand() % moves.size()];
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
@@ -172,7 +179,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         surrounding_cost[pp] = pow(1e3, 1 - it.second / best);
     }
 
-    if (tasks[ship->id] == HARD_RETURN) surrounding_cost[p] = 1e7;
+    if (last_moved[ship->id] <= game.turn_number - 5) surrounding_cost[p] = 1e7;
 
     return surrounding_cost;
 }
@@ -185,7 +192,7 @@ bool ideal_dropoff(Position p) {
     for (vector<MapCell>& cells : game_map->cells) {
         for (MapCell cell : cells) {
             int d = game_map->calculate_distance(p, cell.position);
-            if (d <= 4) {
+            if (d <= 5) {
                 halite_around += cell.halite;
                 ++s;
             }
@@ -235,8 +242,8 @@ int main(int argc, char* argv[]) {
         vector<Command> command_queue;
 
         log::log("Dropoffs.");
-#if 1
         Halite wanted = 0;
+#if 1
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
 
@@ -491,6 +498,7 @@ int main(int argc, char* argv[]) {
                     if (pp == move_space[assignment[i]]) {
                         command_queue.push_back(explorers[i]->move(d));
                         game_map->at(pp)->mark_unsafe(explorers[i]);
+                        last_moved[explorers[i]->id] = game.turn_number;
                         break;
                     }
                 }
