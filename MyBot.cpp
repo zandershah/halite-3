@@ -192,7 +192,7 @@ bool ideal_dropoff(Position p) {
         }
     }
 
-    const int close = game_map->width / 4;
+    const int close = game_map->width / 3;
     bool local_dropoffs = false;
     for (auto& player : game.players) {
         int d = game_map->calculate_distance(p, player->shipyard->position);
