@@ -191,12 +191,14 @@ bool ideal_dropoff(Position p) {
     size_t s = 0;
     for (vector<MapCell>& cells : game_map->cells) {
         for (MapCell cell : cells) {
-            int d = game_map->calculate_distance(p, cell.position);
-            if (d <= 5) {
-                halite_around += cell.halite;
-                ++s;
-            }
+            if (game_map->calculate_distance(p, cell.position) > 5) continue;
+            halite_around += cell.halite;
+            ++s;
         }
+    }
+    for (auto& it : game.me->ships) {
+        if (game_map->calculate_distance(p, it.second->position) > 5) continue;
+        halite_around += it.second->halite;
     }
 
     const int close = game_map->width / 3;
@@ -217,7 +219,7 @@ bool ideal_dropoff(Position p) {
         }
     }
 
-    bool ideal = halite_around >= s * MAX_HALITE * 0.125;
+    bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
@@ -229,6 +231,11 @@ int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
+
+    Halite total_halite = 0;
+    for (vector<MapCell>& cells : game.game_map->cells) {
+        for (MapCell& cell : cells) total_halite += cell.halite;
+    }
 
     unordered_map<EntityId, Halite> last_halite;
 
@@ -267,6 +274,7 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
+        Halite current_halite = 0;
         log::log("Inspiration. Closest base.");
         for (vector<MapCell>& cell_row : game_map->cells) {
             for (MapCell& cell : cell_row) {
@@ -290,6 +298,8 @@ int main(int argc, char* argv[]) {
                         cell.closest_base = it.second->position;
                     }
                 }
+
+                current_halite += cell.halite;
             }
         }
         for (auto& it : me->ships) {
@@ -356,9 +366,9 @@ int main(int argc, char* argv[]) {
 
             int return_estimate = game.turn_number + closest_base_dist;
             return_estimate +=
-                game_map->at(cell->closest_base)->close_ships * 0.3;
+                ceil(game_map->at(cell->closest_base)->close_ships * 0.3);
             // TODO: Dry run of return.
-            if (all_empty || return_estimate >= MAX_TURNS) {
+            if (all_empty || return_estimate > MAX_TURNS) {
                 tasks[id] = HARD_RETURN;
                 started_hard_return = true;
             }
@@ -509,18 +519,19 @@ int main(int argc, char* argv[]) {
             Halite h = 0;
             for (auto ship : explorers) {
                 if (ship->halite >= last_halite[ship->id])
-                    h = ship->halite - last_halite[ship->id];
+                    h += ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
             ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
         }
-        should_spawn_ewma = game.turn_number + SHIP_COST / ewma < MAX_TURNS;
+        should_spawn_ewma =
+            game.turn_number + SHIP_COST / ewma < MAX_TURNS - 75;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
         size_t ship_lo = 0;
         // TODO: Smarter counter of mid-game aggression.
-        if (!started_hard_return) {
+        if (!started_hard_return && game.players.size() == 2) {
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
                 ship_lo += player->ships.size();
@@ -533,6 +544,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
+        should_spawn &= current_halite * 1.0 / total_halite < 0.75;
 
 #if 0
         should_spawn &= me->ships.empty();
