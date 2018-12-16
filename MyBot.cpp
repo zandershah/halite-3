@@ -516,7 +516,7 @@ int main(int argc, char* argv[]) {
             ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma =
-            game.turn_number + SHIP_COST / ewma < MAX_TURNS - 75;
+            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 75;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
