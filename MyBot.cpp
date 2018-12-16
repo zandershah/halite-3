@@ -51,7 +51,7 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     bool safe = game.players.size() != 4;
     safe &= ship->owner != cell->ship->owner;
     safe &= tasks[ship->id] == EXPLORE;
-    safe &= ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
+    // safe &= ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
 
     if (!safe) return false;
 
@@ -306,13 +306,9 @@ int main(int argc, char* argv[]) {
             ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
         }
 
-        // Possible targets.
         set<Position> targets;
         for (vector<MapCell>& cell_row : game_map->cells) {
-            for (MapCell& cell : cell_row) {
-                if (cell.closest_base != cell.position)
-                    targets.insert(cell.position);
-            }
+            for (MapCell& cell : cell_row) targets.insert(cell.position);
         }
         for (auto& player : game.players) {
             if (player->id == me->id) continue;
@@ -325,22 +321,14 @@ int main(int argc, char* argv[]) {
                     continue;
 
                 if (game.players.size() == 4) targets.erase(p);
-                if (!cell->is_occupied() ||
-                    cell->ship->halite < it.second->halite) {
-                    cell->mark_unsafe(it.second);
-                }
+                cell->mark_unsafe(it.second);
 
                 if (hard_stuck(it.second)) continue;
 
                 for (Position pp : p.get_surrounding_cardinals()) {
                     if (game.players.size() == 4)
                         targets.erase(game_map->normalize(pp));
-                    cell = game_map->at(pp);
-
-                    if (!cell->is_occupied() ||
-                        cell->ship->halite < it.second->halite) {
-                        cell->mark_unsafe(it.second);
-                    }
+                    game_map->at(pp)->mark_unsafe(it.second);
                 }
             }
         }
@@ -530,13 +518,11 @@ int main(int argc, char* argv[]) {
 
         log::log("Spawn ships.");
         size_t ship_lo = 0;
-        // TODO: Smarter counter of mid-game aggression.
         if (!started_hard_return && game.players.size() == 2) {
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
-                ship_lo += player->ships.size();
+                ship_lo = player->ships.size();
             }
-            ship_lo /= (game.players.size() - 1);
         }
 
         bool should_spawn = me->halite >= SHIP_COST + wanted;
