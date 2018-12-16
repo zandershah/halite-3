@@ -16,7 +16,7 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
-const size_t MAX_WALKS = 500;
+size_t MAX_WALKS = 500;
 
 const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
@@ -231,6 +231,9 @@ int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
+
+    // TODO: Fix for timeouts in 64 2p.
+    if (game.game_map->width == 64 && game.players.size() == 2) MAX_WALKS = 250;
 
     Halite total_halite = 0;
     for (vector<MapCell>& cells : game.game_map->cells) {
