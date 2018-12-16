@@ -51,7 +51,7 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     bool safe = game.players.size() != 4;
     safe &= ship->owner != cell->ship->owner;
     safe &= tasks[ship->id] == EXPLORE;
-    // safe &= ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
+    safe &= ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
 
     if (!safe) return false;
 
@@ -423,9 +423,7 @@ int main(int argc, char* argv[]) {
                         game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite - dist[p];
-                    bool should_inspire =
-                        game.players.size() == 4 || d <= INSPIRATION_RADIUS;
-                    if (cell->inspired && should_inspire)
+                    if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
 
                     double rate = profit / max(1.0, d + dd);
