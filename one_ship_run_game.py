@@ -6,7 +6,7 @@ os.system('set -e')
 os.system('cmake .')
 os.system('make')
 
-bots = ["./MyBot"] + ["./bots/MyBot_Dec9Solo"]
+bots = ['./MyBot'] + ['./Test']
 
 seed = randint(0, (1 << 31) - 1) if len(sys.argv) == 1 else sys.argv[1]
 

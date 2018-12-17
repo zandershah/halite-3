@@ -198,28 +198,19 @@ bool ideal_dropoff(Position p) {
     }
 
     const int close = game_map->width / 3;
-    bool local_dropoffs =
+    bool local_dropoffs = game_map->at(p)->has_structure();
+    local_dropoffs |=
         game_map->calculate_distance(p, game.me->shipyard->position) <= close;
     for (auto& it : game.me->dropoffs) {
         local_dropoffs |=
             game_map->calculate_distance(p, it.second->position) <= close;
     }
-    for (auto& player : game.players) {
-        if (player->id == game.me->id) continue;
 
-        local_dropoffs |=
-            !game_map->calculate_distance(p, player->shipyard->position);
-        for (auto& it : player->dropoffs) {
-            local_dropoffs |=
-                !game_map->calculate_distance(p, it.second->position);
-        }
-    }
-
-    bool ideal = halite_around >= s * MAX_HALITE * 0.15;
+    bool ideal = halite_around >= s * MAX_HALITE * 0.175;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
-    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
     return ideal;
 }
 
@@ -414,8 +405,9 @@ int main(int argc, char* argv[]) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd = sqrt(
-                        game_map->calculate_distance(p, cell->closest_base));
+                    double dd = sqrt(game_map->calculate_distance(
+                        ship->position, cell->closest_base));
+                    if (ship->halite < MAX_HALITE * 0.75) dd = 1;
 
                     Halite profit = cell->halite - dist[p];
                     if (cell->inspired)
