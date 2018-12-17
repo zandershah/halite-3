@@ -18,7 +18,7 @@ unordered_map<EntityId, Task> tasks;
 double HALITE_RETURN;
 size_t MAX_WALKS = 500;
 
-const double ALPHA = 0.35;
+const double ALPHA = 0.25;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
@@ -47,10 +47,8 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 
     MapCell* cell = game_map->at(p);
     if (!cell->is_occupied()) return true;
-
-    bool safe = game.players.size() != 4;
-    safe &= ship->owner != cell->ship->owner;
-    if (!safe) return false;
+    if (ship->owner == cell->ship->owner) return false;
+    if (tasks[ship->id] == HARD_RETURN) return true;
 
     // Estimate who is closer.
     int ally = 1e3, evil = 1e3;
@@ -63,7 +61,7 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         if (it.second->id == cell->ship->id) continue;
         evil = min(evil, game_map->calculate_distance(p, it.second->position));
     }
-    return ally + 1 < evil;
+    return game.players.size() == 2 && ally + 1 < evil;
 }
 
 void dijkstras(position_map<Halite>& dist, Position source) {
@@ -407,7 +405,8 @@ int main(int argc, char* argv[]) {
                     double d = game_map->calculate_distance(ship->position, p);
                     double dd = sqrt(game_map->calculate_distance(
                         ship->position, cell->closest_base));
-                    if (ship->halite < MAX_HALITE * 0.75) dd = 1;
+                    // if (ship->halite < MAX_HALITE * 0.75) dd = 1;
+                    dd = 1;
 
                     Halite profit = cell->halite - dist[p];
                     if (cell->inspired)
@@ -499,14 +498,14 @@ int main(int argc, char* argv[]) {
             if (ideal) wanted = wanted ? min(wanted, delta) : delta;
         }
 
-        if (game.turn_number % 5 == 0) {
+        if (game.turn_number % 3 == 0) {
             Halite h = 0;
             for (auto ship : explorers) {
                 if (ship->halite >= last_halite[ship->id])
                     h += ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
-            ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
+            ewma = ALPHA * h / (explorers.size() * 3) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma =
             game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 75;
