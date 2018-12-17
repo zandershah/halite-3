@@ -50,25 +50,20 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 
     bool safe = game.players.size() != 4;
     safe &= ship->owner != cell->ship->owner;
-    safe &= tasks[ship->id] == EXPLORE;
-    safe &= ship->halite + MAX_HALITE / 4 <= cell->ship->halite;
-
     if (!safe) return false;
 
     // Estimate who is closer.
-    int votes = 0;
+    int ally = 1e3, evil = 1e3;
     for (auto& it : game.me->ships) {
-        int d = game_map->calculate_distance(p, it.second->position);
-        votes += d <= 3;
+        if (it.second->id == ship->id || tasks[it.second->id] != EXPLORE)
+            continue;
+        ally = min(ally, game_map->calculate_distance(p, it.second->position));
     }
-    for (auto& player : game.players) {
-        if (player->id != cell->ship->owner) continue;
-        for (auto& it : player->ships) {
-            int d = game_map->calculate_distance(p, it.second->position);
-            votes -= d <= 3;
-        }
+    for (auto& it : game.players[cell->ship->owner]->ships) {
+        if (it.second->id == cell->ship->id) continue;
+        evil = min(evil, game_map->calculate_distance(p, it.second->position));
     }
-    return votes >= 0;
+    return ally < evil;
 }
 
 void dijkstras(position_map<Halite>& dist, Position source) {
@@ -138,8 +133,6 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
 
         if (tasks[ship->id] == EXPLORE && ship_halite > HALITE_RETURN) break;
     }
-
-    if (game.turn_number + t > MAX_TURNS) ship_halite = 0;
 
     Halite end_mine = 0;
     if (p == ship->next) {
