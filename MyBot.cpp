@@ -418,9 +418,7 @@ int main(int argc, char* argv[]) {
                         game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite - dist[p];
-                    bool should_inspire =
-                        d <= 2 * INSPIRATION_RADIUS || game.players.size() == 4;
-                    if (cell->inspired && should_inspire)
+                    if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
 
                     double rate = profit / max(1.0, d + dd);
@@ -536,7 +534,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
-        should_spawn &= current_halite * 1.0 / total_halite >= 0.35;
+        should_spawn &= current_halite * 1.0 / total_halite >= 0.3;
 
 #if 0
         should_spawn &= me->ships.empty();
