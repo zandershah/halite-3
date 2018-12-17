@@ -418,7 +418,9 @@ int main(int argc, char* argv[]) {
                         game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite - dist[p];
-                    if (cell->inspired)
+                    bool should_inspire =
+                        d <= 2 * INSPIRATION_RADIUS || game.players.size() == 4;
+                    if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
 
                     double rate = profit / max(1.0, d + dd);
