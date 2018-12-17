@@ -534,7 +534,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
-        should_spawn &= current_halite * 1.0 / total_halite >= 0.25;
+        should_spawn &= current_halite * 1.0 / total_halite >= 0.35;
 
 #if 0
         should_spawn &= me->ships.empty();
