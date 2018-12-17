@@ -63,7 +63,7 @@ inline bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         if (it.second->id == cell->ship->id) continue;
         evil = min(evil, game_map->calculate_distance(p, it.second->position));
     }
-    return ally < evil;
+    return ally + 1 < evil;
 }
 
 void dijkstras(position_map<Halite>& dist, Position source) {
@@ -141,7 +141,10 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship) {
             end_mine += INSPIRED_BONUS_MULTIPLIER * end_mine;
     }
 
-    return {first_direction, (ship_halite + end_mine - burned_halite) / t};
+    double rate = (ship_halite + end_mine - burned_halite) / t;
+    // TODO: Return faster.
+    if (tasks[ship->id] != EXPLORE) rate /= t;
+    return {first_direction, rate};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -496,6 +499,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Save for dropoff.
         for (auto ship : explorers) {
             bool ideal = ideal_dropoff(ship->next);
             const Halite delta =
