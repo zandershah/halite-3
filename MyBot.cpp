@@ -223,7 +223,7 @@ bool ideal_dropoff(Position p) {
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
-    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
     return ideal;
 }
 
@@ -266,12 +266,11 @@ int main(int argc, char* argv[]) {
                 command_queue.push_back(ship->make_dropoff());
                 game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
                     game.my_id, -ship->id, ship->position.x, ship->position.y);
-
                 log::log("Dropoff created at", ship->position);
 
                 me->ships.erase(it++);
             } else {
-                if (ideal) wanted = wanted ? min(wanted, delta) : delta;
+                // if (ideal) wanted = wanted ? min(wanted, delta) : delta;
                 ++it;
             }
         }
@@ -502,6 +501,13 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+        }
+
+        for (auto ship : explorers) {
+            bool ideal = ideal_dropoff(ship->next);
+            const Halite delta =
+                DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
+            if (ideal) wanted = wanted ? min(wanted, delta) : delta;
         }
 
         if (game.turn_number % 5 == 0) {
