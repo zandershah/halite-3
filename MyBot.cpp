@@ -217,13 +217,9 @@ int main(int argc, char* argv[]) {
 
     HALITE_RETURN = MAX_HALITE * 0.95;
 
-    // TODO: Fix for timeouts in 64.
-    if (game.game_map->width == 64) MAX_WALKS = 250;
-
     Halite total_halite = 0;
-    for (vector<MapCell>& cells : game.game_map->cells) {
+    for (vector<MapCell>& cells : game.game_map->cells)
         for (MapCell& cell : cells) total_halite += cell.halite;
-    }
 
     unordered_map<EntityId, Halite> last_halite;
 
@@ -393,29 +389,50 @@ int main(int argc, char* argv[]) {
 
         log::log("Explorer cost matrix.");
         if (!explorers.empty()) {
-            vector<vector<double>> cost_matrix;
+            vector<vector<double>> uncompressed_cost_matrix;
+            vector<bool> is_top_target(targets.size());
+
             for (auto& ship : explorers) {
                 position_map<Halite> dist;
                 dijkstras(dist, ship->position);
+                priority_queue<double> pq;
 
-                vector<double> cost;
+                vector<double> uncompressed_cost;
                 for (Position p : targets) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calculate_distance(ship->position, p);
-                    double dd = sqrt(game_map->calculate_distance(
-                        ship->position, cell->closest_base));
-                    // if (ship->halite < MAX_HALITE * 0.75) dd = 1;
-                    dd = 1;
+                    double dd = sqrt(
+                        game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite - dist[p];
                     if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
+                    if (game.players.size() == 2 && cell->ship && d <= 2)
+                        profit += cell->ship->halite - ship->halite;
 
-                    double rate = profit / max(1.0, d + dd);
-
-                    cost.push_back(-rate + 5e3);
+                    double rate = profit / (d + dd);
+                    uncompressed_cost.push_back(-rate + 5e3);
+                    pq.push(uncompressed_cost.back());
+                    while (pq.size() > explorers.size()) pq.pop();
                 }
+
+                for (size_t i = 0; i < uncompressed_cost.size(); ++i) {
+                    if (!is_top_target[i] && uncompressed_cost[i] <= pq.top())
+                        is_top_target[i] = true;
+                }
+                uncompressed_cost_matrix.push_back(move(uncompressed_cost));
+            }
+
+            // Coordinate compress.
+            vector<int> target_space;
+            for (size_t i = 0; i < is_top_target.size(); ++i)
+                if (is_top_target[i]) target_space.push_back(i);
+            vector<vector<double>> cost_matrix;
+            for (vector<double>& uncompressed_cost : uncompressed_cost_matrix) {
+                vector<double> cost;
+                for (size_t i = 0; i < uncompressed_cost.size(); ++i)
+                    if (is_top_target[i]) cost.push_back(uncompressed_cost[i]);
                 cost_matrix.push_back(move(cost));
             }
 
@@ -425,7 +442,7 @@ int main(int argc, char* argv[]) {
 
             for (size_t i = 0; i < explorers.size(); ++i) {
                 auto it = targets.begin();
-                advance(it, assignment[i]);
+                advance(it, target_space[assignment[i]]);
                 explorers[i]->next = *it;
                 message(explorers[i]->next, "green");
             }
@@ -447,13 +464,12 @@ int main(int argc, char* argv[]) {
             vector<Position> move_space(local_targets.begin(),
                                         local_targets.end());
 
+            // Coordinate compress.
             position_map<int> move_indices;
-            for (size_t i = 0; i < move_space.size(); ++i) {
+            for (size_t i = 0; i < move_space.size(); ++i)
                 move_indices[move_space[i]] = i;
-            }
 
-            // Fill cost matrix. Moves in the optimal direction have low
-            // cost.
+            // Fill cost matrix. Optimal direction has low cost.
             vector<vector<double>> cost_matrix;
             for (auto ship : explorers) {
                 vector<double> cost(move_space.size(), 1e9);
