@@ -18,7 +18,7 @@ unordered_map<EntityId, Task> tasks;
 double HALITE_RETURN;
 size_t MAX_WALKS = 500;
 
-const double ALPHA = 0.25;
+const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
@@ -195,7 +195,7 @@ bool ideal_dropoff(Position p) {
         halite_around += it.second->halite;
     }
 
-    const int close = game_map->width / 3;
+    const int close = 15;
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
         game_map->calculate_distance(p, game.me->shipyard->position) <= close;
@@ -204,11 +204,12 @@ bool ideal_dropoff(Position p) {
             game_map->calculate_distance(p, it.second->position) <= close;
     }
 
-    bool ideal = halite_around >= s * MAX_HALITE * 0.175;
+    // TODO: Test out dropoffs by EWMA.
+    bool ideal = halite_around >= s * MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
-    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
     return ideal;
 }
 
@@ -408,10 +409,10 @@ int main(int argc, char* argv[]) {
                     Halite profit = cell->halite - dist[p];
                     if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (game.players.size() == 2 && cell->ship && d <= 2)
+                    if (game.players.size() == 2 && cell->ship && d <= 1)
                         profit += cell->ship->halite - ship->halite;
 
-                    double rate = profit / (d + dd);
+                    double rate = profit / max(1.0, d + dd);
                     uncompressed_cost.push_back(-rate + 5e3);
                     pq.push(uncompressed_cost.back());
                     while (pq.size() > explorers.size()) pq.pop();
@@ -514,14 +515,14 @@ int main(int argc, char* argv[]) {
             if (ideal) wanted = wanted ? min(wanted, delta) : delta;
         }
 
-        if (game.turn_number % 3 == 0) {
+        if (game.turn_number % 5 == 0) {
             Halite h = 0;
             for (auto ship : explorers) {
                 if (ship->halite >= last_halite[ship->id])
                     h += ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
-            ewma = ALPHA * h / (explorers.size() * 3) + (1 - ALPHA) * ewma;
+            ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma =
             game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 75;
