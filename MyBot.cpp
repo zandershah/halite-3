@@ -93,13 +93,7 @@ void dijkstras(position_map<Halite>& dist, Position source) {
     }
 }
 
-struct RandomWalkResult {
-    Direction first;
-    Halite halite;
-    double turns;
-};
-// Navigate to |ship->next|.
-RandomWalkResult random_walk(shared_ptr<Ship> ship, Position d) {
+pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     Position p = ship->position;
@@ -144,7 +138,18 @@ RandomWalkResult random_walk(shared_ptr<Ship> ship, Position d) {
             end_mine += INSPIRED_BONUS_MULTIPLIER * end_mine;
     }
 
-    return {first_direction, ship_halite + end_mine - burned_halite, t};
+    const Halite end_halite = ship_halite + end_mine - burned_halite;
+
+    double rate;
+    if (tasks[ship->id] == EXPLORE) {
+        if (game.players.size() == 2)
+            rate = (end_halite - ship->halite) / t;
+        else
+            rate = end_halite / t;
+    } else {
+        rate = end_halite / pow(t, 2);
+    }
+    return {first_direction, rate};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -167,14 +172,8 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     double best = 1.0;
     for (size_t i = 0; i < MAX_WALKS; ++i) {
         auto walk = random_walk(ship, ship->next);
-        double walk_cost;
-        if (tasks[ship->id] == EXPLORE) {
-            walk_cost = (walk.halite - ship->halite) / walk.turns;
-        } else {
-            walk_cost = walk.halite / pow(walk.turns, 2);
-        }
-        best_walk[walk.first] = max(best_walk[walk.first], walk_cost);
-        best = max(best, walk_cost);
+        best_walk[walk.first] = max(best_walk[walk.first], walk.second);
+        best = max(best, walk.second);
     }
     for (auto& it : best_walk) {
         Position pp = game_map->normalize(p.directional_offset(it.first));
@@ -441,6 +440,7 @@ int main(int argc, char* argv[]) {
                         profit += cell->ship->halite - ship->halite;
 
                     double rate = profit / max(1.0, d + dd);
+
                     uncompressed_cost.push_back(-rate + 5e3);
                     pq.push(uncompressed_cost.back());
                     while (pq.size() > explorers.size() + 5) pq.pop();
@@ -464,6 +464,12 @@ int main(int argc, char* argv[]) {
                 vector<double> cost;
                 for (size_t j = 0; j < uncompressed_cost.size(); ++j) {
                     if (!is_top_target[j]) continue;
+
+                    if (game.players.size() == 4) {
+                        cost.push_back(uncompressed_cost[j]);
+                        continue;
+                    }
+
                     if (uncompressed_cost[j] > top_score[i]) {
                         cost.push_back(1e9);
                         continue;
@@ -475,8 +481,7 @@ int main(int argc, char* argv[]) {
                     double c = 0;
                     for (size_t k = 0; k < 10; ++k) {
                         auto walk = random_walk(explorers[i], *it);
-                        c = max(c, (walk.halite - explorers[i]->halite) /
-                                       walk.turns);
+                        c = max(c, walk.second);
                     }
                     cost.push_back(-c + 5e3);
                 }
