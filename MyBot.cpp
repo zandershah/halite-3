@@ -233,7 +233,7 @@ bool ideal_dropoff(Position p) {
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
-    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
     return ideal;
 }
 
@@ -581,10 +581,11 @@ int main(int argc, char* argv[]) {
 
         log::log("Spawn ships.");
         size_t ship_lo = 0;
-        if (!started_hard_return && game.players.size() == 2) {
+        if (!started_hard_return) {
+            ship_lo = 1e3;
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
-                ship_lo = player->ships.size();
+                ship_lo = min(ship_lo, player->ships.size());
             }
         }
 
