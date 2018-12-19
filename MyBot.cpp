@@ -1,4 +1,3 @@
-#include "MyBot.h"
 #include "hlt/game.hpp"
 #include "hungarian/Hungarian.h"
 
@@ -193,12 +192,11 @@ double ewma_dropoff(Position p) {
     double saved = 0;
 
     // Approximate number of turns saved mining out.
-    const int close = game_map->width / 6;
     Halite halite_around = 0;
     for (vector<MapCell>& cells : game_map->cells) {
         for (MapCell cell : cells) {
             int d = game_map->calculate_distance(p, cell.position);
-            if (d > close || (cell.ship && cell.ship->owner != game.me->id))
+            if (d > 5 || (cell.ship && cell.ship->owner != game.me->id))
                 continue;
             halite_around += cell.halite;
         }
@@ -222,7 +220,7 @@ double ewma_dropoff(Position p) {
 bool ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    const int close = game_map->width / 3;
+    const int close = max(15, game_map->width / 3);
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
         game_map->calculate_distance(p, game.me->shipyard->position) <= close;
@@ -236,7 +234,7 @@ bool ideal_dropoff(Position p) {
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
-    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 5;
     return ideal;
 }
 
@@ -578,11 +576,10 @@ int main(int argc, char* argv[]) {
 
         log::log("Spawn ships.");
         size_t ship_lo = 0;
-        if (!started_hard_return) {
-            ship_lo = 1e3;
+        if (!started_hard_return && game.players.size() == 2) {
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
-                ship_lo = min(ship_lo, player->ships.size());
+                ship_lo = player->ships.size();
             }
         }
 
