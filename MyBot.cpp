@@ -16,7 +16,8 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
-size_t MAX_WALKS = 500;
+const size_t MAX_WALKS = 500;
+size_t MAX_MINI_WALKS = 25;
 
 const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
@@ -244,6 +245,7 @@ int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
+    if (game.game_map->width >= 64) MAX_MINI_WALKS = 10;
 
     Halite total_halite = 0;
     for (vector<MapCell>& cells : game.game_map->cells)
@@ -445,7 +447,8 @@ int main(int argc, char* argv[]) {
                     double rate = profit / max(1.0, d + dd);
                     uncompressed_cost.push_back(-rate + 5e3);
                     pq.push(uncompressed_cost.back());
-                    while (pq.size() > explorers.size() + 25) pq.pop();
+                    while (pq.size() > explorers.size() + MAX_MINI_WALKS)
+                        pq.pop();
                 }
 
                 for (size_t i = 0; i < uncompressed_cost.size(); ++i) {
@@ -475,7 +478,7 @@ int main(int argc, char* argv[]) {
                     advance(it, j);
 
                     double c = 0;
-                    for (size_t k = 0; k < 25; ++k) {
+                    for (size_t k = 0; k < MAX_MINI_WALKS; ++k) {
                         auto walk = random_walk(explorers[i], *it);
                         c = max(c, (walk.halite - explorers[i]->halite) /
                                        walk.turns);
