@@ -260,7 +260,7 @@ int main(int argc, char* argv[]) {
 
             bool ideal = ideal_dropoff(ship->position);
             const Halite delta =
-                DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
+                DROPOFF_COST - game_map->at(ship)->halite - ship->halite;
 
             if (ideal && delta <= me->halite) {
                 me->halite -= max(0, delta);
@@ -532,7 +532,7 @@ int main(int argc, char* argv[]) {
         for (auto ship : explorers) {
             bool ideal = ideal_dropoff(ship->next);
             const Halite delta =
-                DROPOFF_COST - game_map->at(ship)->halite + ship->halite;
+                DROPOFF_COST - game_map->at(ship)->halite - ship->halite;
             if (ideal) wanted = wanted ? min(wanted, delta) : delta;
         }
 
