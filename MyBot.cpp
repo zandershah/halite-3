@@ -17,7 +17,6 @@ unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
 const size_t MAX_WALKS = 500;
-size_t MAX_MINI_WALKS = 25;
 
 const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
@@ -194,7 +193,7 @@ double ewma_dropoff(Position p) {
     double saved = 0;
 
     // Approximate number of turns saved mining out.
-    const int close = game_map->width / (game.players.size() == 2 ? 4 : 6);
+    const int close = game_map->width / 6;
     Halite halite_around = 0;
     for (vector<MapCell>& cells : game_map->cells) {
         for (MapCell cell : cells) {
@@ -223,7 +222,7 @@ double ewma_dropoff(Position p) {
 bool ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    const int close = game_map->width / (game.players.size() == 2 ? 2 : 3);
+    const int close = game_map->width / 3;
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
         game_map->calculate_distance(p, game.me->shipyard->position) <= close;
@@ -245,7 +244,6 @@ int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
-    if (game.game_map->width >= 64) MAX_MINI_WALKS = 10;
 
     Halite total_halite = 0;
     for (vector<MapCell>& cells : game.game_map->cells)
@@ -447,8 +445,7 @@ int main(int argc, char* argv[]) {
                     double rate = profit / max(1.0, d + dd);
                     uncompressed_cost.push_back(-rate + 5e3);
                     pq.push(uncompressed_cost.back());
-                    while (pq.size() > explorers.size() + MAX_MINI_WALKS)
-                        pq.pop();
+                    while (pq.size() > explorers.size() + 5) pq.pop();
                 }
 
                 for (size_t i = 0; i < uncompressed_cost.size(); ++i) {
@@ -478,7 +475,7 @@ int main(int argc, char* argv[]) {
                     advance(it, j);
 
                     double c = 0;
-                    for (size_t k = 0; k < MAX_MINI_WALKS; ++k) {
+                    for (size_t k = 0; k < 10; ++k) {
                         auto walk = random_walk(explorers[i], *it);
                         c = max(c, (walk.halite - explorers[i]->halite) /
                                        walk.turns);
