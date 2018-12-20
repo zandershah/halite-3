@@ -228,9 +228,7 @@ Halite ideal_dropoff(Position p, Position f) {
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
-
-    double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() >= 15 && game.me->ships.size() / bases >= 5;
+    ideal &= game.me->ships.size() / (2.0 + game.me->dropoffs.size()) >= 10;
 
     return ideal * saved;
 }
