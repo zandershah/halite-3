@@ -15,7 +15,7 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
-const size_t MAX_WALKS = 500;
+const size_t MAX_WALKS = 350;
 
 const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
@@ -55,12 +55,12 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         if (it.second->id == ship->id || tasks[it.second->id] != EXPLORE)
             continue;
         int d = game_map->calculate_distance(p, it.second->position);
-        ally += pow(1.5, 5 - d);
+        ally += pow(2, 5 - d);
     }
     for (auto& it : game.players[cell->ship->owner]->ships) {
         if (it.second->id == cell->ship->id) continue;
         int d = game_map->calculate_distance(p, it.second->position);
-        evil += pow(1.5, 5 - d);
+        evil += pow(2, 5 - d);
     }
     return game.players.size() == 2 && ally > evil;
 }
@@ -127,7 +127,9 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
         if (first_direction == Direction::UNDEFINED) first_direction = d;
 
         // Early exit.
-        if (walk_cost(2 * MAX_HALITE) < best_walk[first_direction]) break;
+        Halite best_mine = MAX_HALITE;
+        if (tasks[ship->id] == EXPLORE) best_mine += MAX_HALITE;
+        if (walk_cost(best_mine) < best_walk[first_direction]) break;
 
         if (d == Direction::STILL) {
             Halite mined = extracted(map_halite);
@@ -365,7 +367,7 @@ int main(int argc, char* argv[]) {
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
             // How long will it take to get a meaningful amount of halite.
-            const int return_turn = (MAX_HALITE / 10) / ewma + game.turn_number;
+            const int return_turn = MAX_HALITE * 0.1 / ewma + game.turn_number;
             if (return_turn > MAX_TURNS && tasks[id] != BLOCK) {
                 if (!ship->halite && game.players.size() == 4 &&
                     current_halite * 1.0 / total_halite <= 0.05)
@@ -466,7 +468,7 @@ int main(int argc, char* argv[]) {
                         game.players.size() == 4 || d <= INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (d <= 3 && cell->ship && cell->ship->owner != game.my_id)
+                    if (d <= 1 && cell->ship && cell->ship->owner != game.my_id)
                         profit += cell->ship->halite;
 
                     if (tasks[ship->id] == BLOCK) {
