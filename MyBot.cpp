@@ -459,7 +459,7 @@ int main(int argc, char* argv[]) {
                             }
                         }
 
-                        if (best_block <= 2)
+                        if (best_block & 3)
                             profit = 5 * pow(10, 4 - best_block);
                     }
 
