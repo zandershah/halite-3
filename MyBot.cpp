@@ -146,6 +146,8 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d) {
             rate = (end_halite - ship->halite) / t;
         else
             rate = end_halite / t;
+    } else if (tasks[ship->id] == BLOCK) {
+        rate = 1 / t;
     } else {
         rate = end_halite / pow(t, 2);
     }
@@ -354,12 +356,11 @@ int main(int argc, char* argv[]) {
 
             // How long will it take to get a meaningful amount of halite.
             const int return_turn = (MAX_HALITE / 10) / ewma + game.turn_number;
-            if (return_turn > MAX_TURNS) {
-                if (ship->halite <= MAX_HALITE / 20) {
+            if (return_turn > MAX_TURNS && tasks[id] != BLOCK) {
+                if (!ship->halite && game.players.size() == 4)
                     tasks[id] = BLOCK;
-                } else if (ship->halite > MAX_HALITE / 20) {
+                else
                     tasks[id] = RETURN;
-                }
             }
 
             // Return estimate if forced.
@@ -417,6 +418,19 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Block the target with the most ship halite.
+        EntityId block_target = -1;
+        Halite most_ship_halite = 0;
+        for (auto player : game.players) {
+            Halite ship_halite = 0;
+            if (player->id == game.my_id) continue;
+            for (auto& it : player->ships) ship_halite += it.second->halite;
+            if (ship_halite > most_ship_halite) {
+                block_target = player->id;
+                most_ship_halite = ship_halite;
+            }
+        }
+
         log::log("Explorer cost matrix.");
         if (!explorers.empty()) {
             vector<vector<double>> uncompressed_cost_matrix;
@@ -441,13 +455,12 @@ int main(int argc, char* argv[]) {
                         game.players.size() == 4 || d <= INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (d <= 1 && cell->ship && safe_to_move(ship, p))
-                        profit += cell->ship->halite - ship->halite;
+                    if (d <= 1 && cell->ship) profit += cell->ship->halite;
 
                     if (tasks[ship->id] == BLOCK) {
                         int best_block = 1e3;
                         for (auto player : game.players) {
-                            if (player->id == me->id) continue;
+                            if (player->id != block_target) continue;
 
                             Position pp = player->shipyard->position;
                             int d = game_map->calculate_distance(pp, p);
@@ -459,10 +472,11 @@ int main(int argc, char* argv[]) {
                             }
                         }
 
-                        if (best_block & 3)
+                        if (1 <= best_block && best_block <= 2)
                             profit = 5 * pow(10, 4 - best_block);
                     }
 
+                    if (!safe_to_move(ship, p)) profit = 0;
                     double rate = profit / max(1.0, d + dd);
 
                     uncompressed_cost.push_back(-rate + 5e3);
