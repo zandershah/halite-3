@@ -25,8 +25,6 @@ bool started_hard_return = false;
 
 unordered_map<EntityId, int> last_moved;
 
-set<EntityId> collide;
-
 inline Halite extracted(Halite h) {
     return (h + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
 }
@@ -49,7 +47,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     MapCell* cell = game_map->at(p);
     if (!cell->is_occupied()) return true;
     if (ship->owner == cell->ship->owner) return false;
-    if (tasks[ship->id] == HARD_RETURN) return true;
+    if (tasks[ship->id] == HARD_RETURN || tasks[ship->id] == BLOCK) return true;
 
     // Estimate who is closer.
     int ally = 0, evil = 0;
@@ -64,7 +62,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         int d = game_map->calculate_distance(p, it.second->position);
         evil += pow(2, 4 - d);
     }
-    return (game.players.size() == 2 || collide.count(ship->id)) && ally > evil;
+    return game.players.size() == 2 && ally > evil;
 }
 
 void dijkstras(position_map<Halite>& dist, Position source) {
@@ -187,7 +185,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     return surrounding_cost;
 }
 
-Halite ideal_dropoff(Position p, Position f) {
+bool ideal_dropoff(Position p, Position f) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     const int close = max(15, game_map->width / 3);
@@ -206,7 +204,7 @@ Halite ideal_dropoff(Position p, Position f) {
         for (int dx = -CLOSE_MINE; dx <= CLOSE_MINE; ++dx) {
             if (abs(dx) + abs(dy) > CLOSE_MINE) continue;
             MapCell* cell = game_map->at(Position(p.x + dx, p.y + dy));
-            if (cell->ship && cell->ship->owner != game.me->id) continue;
+            if (cell->ship && cell->ship->owner != game.my_id) continue;
             halite_around += cell->halite;
         }
     }
@@ -223,7 +221,6 @@ Halite ideal_dropoff(Position p, Position f) {
     }
     saved -= ewma * game_map->calculate_distance(p, f);
 
-    // TODO: Test out dropoffs by EWMA.
     bool ideal = saved >= DROPOFF_COST;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
@@ -232,7 +229,7 @@ Halite ideal_dropoff(Position p, Position f) {
     double bases = 2.0 + game.me->dropoffs.size();
     ideal &= game.me->ships.size() >= 15 && game.me->ships.size() / bases >= 5;
 
-    return ideal * saved;
+    return ideal;
 }
 Halite ideal_dropoff(Position p) { return ideal_dropoff(p, p); }
 
@@ -327,14 +324,13 @@ int main(int argc, char* argv[]) {
                 if (game_map->calculate_distance(p, cell->closest_base) <= 1)
                     continue;
 
-                if (game.players.size() == 4 && !collide.empty())
-                    targets.erase(p);
+                if (game.players.size() == 4) targets.erase(p);
                 cell->mark_unsafe(it.second);
 
                 if (hard_stuck(it.second)) continue;
 
                 for (Position pp : p.get_surrounding_cardinals()) {
-                    if (game.players.size() == 4 && !collide.empty())
+                    if (game.players.size() == 4)
                         targets.erase(game_map->normalize(pp));
                     game_map->at(pp)->mark_unsafe(it.second);
                 }
@@ -363,10 +359,9 @@ int main(int argc, char* argv[]) {
             // Return estimate based on ewma.
             const int return_turn =
                 (HALITE_RETURN - ship->halite) / ewma + game.turn_number;
-            if (return_turn > MAX_TURNS && ship->halite > MAX_HALITE / 10) {
-                tasks[id] = RETURN;
-                collide.insert(id);
-            }
+            if (return_turn > MAX_TURNS &&
+                current_halite * 1.0 / total_halite <= 0.05)
+                tasks[id] = ship->halite > MAX_HALITE / 10 ? RETURN : BLOCK;
 
             // Return estimate if forced.
             const int forced_return_turn =
@@ -374,11 +369,12 @@ int main(int argc, char* argv[]) {
                 game_map->at(cell->closest_base)->close_ships * 0.3;
             // TODO: Dry run of return.
             if (all_empty || forced_return_turn > MAX_TURNS) {
-                tasks[id] = HARD_RETURN;
+                if (tasks[id] != BLOCK) tasks[id] = HARD_RETURN;
                 started_hard_return = true;
             }
 
             switch (tasks[id]) {
+                case BLOCK:
                 case EXPLORE:
                     if (ship->halite > HALITE_RETURN) tasks[id] = RETURN;
                     break;
@@ -410,6 +406,7 @@ int main(int argc, char* argv[]) {
             }
 
             switch (tasks[id]) {
+                case BLOCK:
                 case EXPLORE:
                     explorers.push_back(ship);
                     break;
@@ -447,8 +444,23 @@ int main(int argc, char* argv[]) {
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     if (d <= 1 && cell->ship && safe_to_move(ship, p))
                         profit += cell->ship->halite - ship->halite;
-                    if (collide.count(ship->id) && cell->ship)
-                        profit += cell->ship->halite;
+
+                    if (tasks[ship->id] == BLOCK) {
+                        int best_block = 1e3;
+                        for (auto player : game.players) {
+                            if (player->id == me->id) continue;
+
+                            Position pp = player->shipyard->position;
+                            int d = game_map->calculate_distance(pp, p);
+                            best_block = min(best_block, d);
+                            for (auto& it : player->dropoffs) {
+                                pp = it.second->position;
+                                d = game_map->calculate_distance(pp, p);
+                                best_block = min(best_block, d);
+                            }
+                        }
+                        if (best_block <= 2) profit = 5e3;
+                    }
 
                     double rate = profit / max(1.0, d + dd);
 
@@ -481,7 +493,7 @@ int main(int argc, char* argv[]) {
                         continue;
                     }
 
-                    if (uncompressed_cost[j] > top_score[i]) {
+                    if (uncompressed_cost[j] > min(top_score[i], 5e3)) {
                         cost.push_back(1e9);
                         continue;
                     }
