@@ -55,12 +55,12 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         if (it.second->id == ship->id || tasks[it.second->id] != EXPLORE)
             continue;
         int d = game_map->calculate_distance(p, it.second->position);
-        ally += pow(2, 4 - d);
+        ally += pow(1.5, 5 - d);
     }
     for (auto& it : game.players[cell->ship->owner]->ships) {
         if (it.second->id == cell->ship->id) continue;
         int d = game_map->calculate_distance(p, it.second->position);
-        evil += pow(2, 4 - d);
+        evil += pow(1.5, 5 - d);
     }
     return game.players.size() == 2 && ally > evil;
 }
@@ -93,7 +93,8 @@ void dijkstras(position_map<Halite>& dist, Position source) {
     }
 }
 
-pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d) {
+pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
+                                    map<Direction, double> best_walk) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     Position p = ship->position;
@@ -103,11 +104,30 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d) {
     Halite burned_halite = 0;
 
     double t = 1;
+
+    auto walk_cost = [&](Halite h) {
+        double rate;
+        if (tasks[ship->id] == EXPLORE) {
+            if (game.players.size() == 2)
+                rate = (h - ship->halite) / t;
+            else
+                rate = h / t;
+        } else if (tasks[ship->id] == BLOCK) {
+            rate = 1 / t;
+        } else {
+            rate = h / pow(t, 2);
+        }
+        return rate;
+    };
+
     for (; p != d; ++t) {
         auto moves = game_map->get_moves(p, d, ship_halite, map_halite);
 
         Direction d = moves[rand() % moves.size()];
         if (first_direction == Direction::UNDEFINED) first_direction = d;
+
+        // Early exit.
+        if (walk_cost(2 * MAX_HALITE) < best_walk[first_direction]) break;
 
         if (d == Direction::STILL) {
             Halite mined = extracted(map_halite);
@@ -139,19 +159,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d) {
     }
 
     const Halite end_halite = ship_halite + end_mine - burned_halite;
-
-    double rate;
-    if (tasks[ship->id] == EXPLORE) {
-        if (game.players.size() == 2)
-            rate = (end_halite - ship->halite) / t;
-        else
-            rate = end_halite / t;
-    } else if (tasks[ship->id] == BLOCK) {
-        rate = 1 / t;
-    } else {
-        rate = end_halite / pow(t, 2);
-    }
-    return {first_direction, rate};
+    return {first_direction, walk_cost(end_halite)};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -169,11 +177,13 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         return surrounding_cost;
     }
 
+    const size_t d = game_map->calculate_distance(ship->position, ship->next);
+
     // Optimize values with random walks.
     map<Direction, double> best_walk;
     double best = 1.0;
-    for (size_t i = 0; i < MAX_WALKS; ++i) {
-        auto walk = random_walk(ship, ship->next);
+    for (size_t i = 0; i < min(50 * d, MAX_WALKS); ++i) {
+        auto walk = random_walk(ship, ship->next, best_walk);
         best_walk[walk.first] = max(best_walk[walk.first], walk.second);
         best = max(best, walk.second);
     }
@@ -517,12 +527,15 @@ int main(int argc, char* argv[]) {
                     auto it = targets.begin();
                     advance(it, j);
 
-                    double c = 0;
-                    for (size_t k = 0; k < 25; ++k) {
-                        auto walk = random_walk(explorers[i], *it);
-                        c = max(c, walk.second);
+                    map<Direction, double> best_walk;
+                    double best = 1.0;
+                    for (size_t k = 0; k < 15; ++k) {
+                        auto walk = random_walk(explorers[i], *it, best_walk);
+                        best_walk[walk.first] =
+                            max(best_walk[walk.first], walk.second);
+                        best = max(best, walk.second);
                     }
-                    cost.push_back(-c + 5e3);
+                    cost.push_back(-best + 5e3);
                 }
                 cost_matrix.push_back(move(cost));
             }
