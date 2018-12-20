@@ -15,7 +15,7 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
-const size_t MAX_WALKS = 350;
+const size_t MAX_WALKS = 250;
 
 const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
@@ -486,8 +486,11 @@ int main(int argc, char* argv[]) {
                             }
                         }
 
-                        if (1 <= best_block && best_block <= 2)
+                        // Block the base or chase enemies.
+                        if (best_block == 1 || best_block == 2)
                             profit = 5 * pow(10, 4 - best_block);
+                        else if (cell->ship && cell->ship->owner != game.my_id)
+                            profit += cell->ship->halite;
                     }
 
                     if (!safe_to_move(ship, p)) profit = 0;
