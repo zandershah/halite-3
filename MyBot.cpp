@@ -235,7 +235,7 @@ bool ideal_dropoff(Position p, Position f) {
     }
     saved -= ewma * game_map->calculate_distance(p, f);
 
-    bool ideal = saved >= DROPOFF_COST;
+    bool ideal = saved >= DROPOFF_COST - game_map->at(p)->halite;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 75;
     ideal &= !started_hard_return;
@@ -367,12 +367,12 @@ int main(int argc, char* argv[]) {
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
             // How long will it take to get a meaningful amount of halite.
-            const int return_turn = MAX_HALITE * 0.1 / ewma + game.turn_number;
+            const int return_turn = MAX_HALITE * 0.05 / ewma + game.turn_number;
             if (return_turn > MAX_TURNS && tasks[id] != BLOCK) {
                 if (!ship->halite && game.players.size() == 4 &&
                     current_halite * 1.0 / total_halite <= 0.05)
                     tasks[id] = BLOCK;
-                else
+                else if (ship->halite > MAX_HALITE * 0.05)
                     tasks[id] = RETURN;
             }
 
