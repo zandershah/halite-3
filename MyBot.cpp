@@ -324,16 +324,12 @@ int main(int argc, char* argv[]) {
                 if (game_map->calculate_distance(p, cell->closest_base) <= 1)
                     continue;
 
-                if (game.players.size() == 4) targets.erase(p);
                 cell->mark_unsafe(it.second);
 
                 if (hard_stuck(it.second)) continue;
 
-                for (Position pp : p.get_surrounding_cardinals()) {
-                    if (game.players.size() == 4)
-                        targets.erase(game_map->normalize(pp));
+                for (Position pp : p.get_surrounding_cardinals())
                     game_map->at(pp)->mark_unsafe(it.second);
-                }
             }
         }
 
@@ -356,12 +352,15 @@ int main(int argc, char* argv[]) {
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
-            // Return estimate based on ewma.
-            const int return_turn =
-                (HALITE_RETURN - ship->halite) / ewma + game.turn_number;
-            if (return_turn > MAX_TURNS &&
-                current_halite * 1.0 / total_halite <= 0.05)
-                tasks[id] = ship->halite > MAX_HALITE / 10 ? RETURN : BLOCK;
+            // How long will it take to get a meaningful amount of halite.
+            const int return_turn = (MAX_HALITE / 10) / ewma + game.turn_number;
+            if (return_turn > MAX_TURNS) {
+                if (ship->halite <= MAX_HALITE / 20) {
+                    tasks[id] = BLOCK;
+                } else if (ship->halite > MAX_HALITE / 20) {
+                    tasks[id] = RETURN;
+                }
+            }
 
             // Return estimate if forced.
             const int forced_return_turn =
@@ -459,7 +458,9 @@ int main(int argc, char* argv[]) {
                                 best_block = min(best_block, d);
                             }
                         }
-                        if (best_block <= 2) profit = 5e3;
+
+                        if (best_block <= 2)
+                            profit = 5 * pow(10, 4 - best_block);
                     }
 
                     double rate = profit / max(1.0, d + dd);
