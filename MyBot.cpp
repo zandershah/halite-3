@@ -229,7 +229,7 @@ bool ideal_dropoff(Position p, Position f) {
     ideal &= !started_hard_return;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() >= 15 && game.me->ships.size() / bases >= 5;
+    ideal &= game.me->ships.size() / bases >= 10;
 
     return ideal;
 }
@@ -357,7 +357,8 @@ int main(int argc, char* argv[]) {
             // How long will it take to get a meaningful amount of halite.
             const int return_turn = (MAX_HALITE / 10) / ewma + game.turn_number;
             if (return_turn > MAX_TURNS && tasks[id] != BLOCK) {
-                if (!ship->halite && game.players.size() == 4)
+                if (!ship->halite && game.players.size() == 4 &&
+                    current_halite * 1.0 / total_halite <= 0.05)
                     tasks[id] = BLOCK;
                 else
                     tasks[id] = RETURN;
@@ -455,7 +456,8 @@ int main(int argc, char* argv[]) {
                         game.players.size() == 4 || d <= INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (d <= 1 && cell->ship) profit += cell->ship->halite;
+                    if (d <= 3 && cell->ship && cell->ship->owner != game.my_id)
+                        profit += cell->ship->halite;
 
                     if (tasks[ship->id] == BLOCK) {
                         int best_block = 1e3;
@@ -503,13 +505,12 @@ int main(int argc, char* argv[]) {
                 for (size_t j = 0; j < uncompressed_cost.size(); ++j) {
                     if (!is_top_target[j]) continue;
 
-                    if (game.players.size() == 4) {
-                        cost.push_back(uncompressed_cost[j]);
-                        continue;
-                    }
-
                     if (uncompressed_cost[j] > min(top_score[i], 5e3)) {
                         cost.push_back(1e9);
+                        continue;
+                    }
+                    if (game.players.size() == 4) {
+                        cost.push_back(uncompressed_cost[j]);
                         continue;
                     }
 
@@ -517,7 +518,7 @@ int main(int argc, char* argv[]) {
                     advance(it, j);
 
                     double c = 0;
-                    for (size_t k = 0; k < 10; ++k) {
+                    for (size_t k = 0; k < 25; ++k) {
                         auto walk = random_walk(explorers[i], *it);
                         c = max(c, walk.second);
                     }
