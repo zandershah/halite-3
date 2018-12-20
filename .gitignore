@@ -53,6 +53,7 @@ CTestTestfile.cmake
 halite
 *__pycache__*
 MyBot*
+bots/*
 replays/*
 *.log
 submit.zip

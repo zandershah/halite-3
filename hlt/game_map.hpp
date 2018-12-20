@@ -1,5 +1,4 @@
 #pragma once
-
 #include "map_cell.hpp"
 #include "types.hpp"
 
