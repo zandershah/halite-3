@@ -184,7 +184,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     // Optimize values with random walks.
     map<Direction, double> best_walk;
     double best = 1.0;
-    for (size_t i = 0; i < min(50 * d, MAX_WALKS); ++i) {
+    for (size_t i = 0; i < min(10 * d, MAX_WALKS); ++i) {
         auto walk = random_walk(ship, ship->next, best_walk);
         best_walk[walk.first] = max(best_walk[walk.first], walk.second);
         best = max(best, walk.second);
@@ -194,7 +194,9 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         surrounding_cost[pp] = pow(1e3, 1 - it.second / best);
     }
 
-    if (last_moved[ship->id] <= game.turn_number - 5) surrounding_cost[p] = 1e7;
+    if (last_moved[ship->id] <= game.turn_number - 5 &&
+        tasks[ship->id] != BLOCK)
+        surrounding_cost[p] = 1e7;
 
     return surrounding_cost;
 }
@@ -535,7 +537,7 @@ int main(int argc, char* argv[]) {
 
                     map<Direction, double> best_walk;
                     double best = 1.0;
-                    for (size_t k = 0; k < 15; ++k) {
+                    for (size_t k = 0; k < 10; ++k) {
                         auto walk = random_walk(explorers[i], *it, best_walk);
                         best_walk[walk.first] =
                             max(best_walk[walk.first], walk.second);
