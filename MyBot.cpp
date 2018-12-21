@@ -15,7 +15,7 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
-const size_t MAX_WALKS = 250;
+size_t MAX_WALKS = 500;
 
 const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
@@ -94,7 +94,7 @@ void dijkstras(position_map<Halite>& dist, Position source) {
 }
 
 pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
-                                    map<Direction, double> best_walk) {
+                                    map<Direction, double>& best_walk) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     Position p = ship->position;
@@ -253,6 +253,7 @@ int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
+    if (game.game_map->width >= 56) MAX_WALKS = 100;
 
     Halite total_halite = 0;
     for (vector<MapCell>& cells : game.game_map->cells)
@@ -322,9 +323,8 @@ int main(int argc, char* argv[]) {
                 current_halite += cell.halite;
             }
         }
-        for (auto& it : me->ships) {
+        for (auto& it : me->ships)
             ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
-        }
 
         set<Position> targets;
         for (vector<MapCell>& cell_row : game_map->cells) {
