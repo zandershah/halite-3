@@ -47,7 +47,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     MapCell* cell = game_map->at(p);
     if (!cell->is_occupied()) return true;
     if (ship->owner == cell->ship->owner) return false;
-    if (tasks[ship->id] == HARD_RETURN || tasks[ship->id] == BLOCK) return true;
+    if (tasks[ship->id] == HARD_RETURN) return true;
 
     // Estimate who is closer.
     int ally = 0, evil = 0;
@@ -117,8 +117,6 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
                 rate = (h - ship->halite) / t;
             else
                 rate = h / t;
-        } else if (tasks[ship->id] == BLOCK) {
-            rate = 1 / t;
         } else {
             rate = h / pow(t, 2);
         }
@@ -199,10 +197,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         surrounding_cost[pp] = pow(1e3, 1 - it.second / best);
     }
 
-    if (last_moved[ship->id] <= game.turn_number - 5 &&
-        tasks[ship->id] != BLOCK)
-        surrounding_cost[p] = 1e7;
-
+    if (last_moved[ship->id] <= game.turn_number - 5) surrounding_cost[p] = 1e7;
     return surrounding_cost;
 }
 
@@ -248,7 +243,7 @@ bool ideal_dropoff(Position p, Position f) {
     ideal &= !started_hard_return;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() / bases >= 10;
+    ideal &= game.me->ships.size() / bases >= 8;
 
     return ideal;
 }
@@ -301,7 +296,7 @@ int main(int argc, char* argv[]) {
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
 
         log::log("Inspiration. Closest base.");
-        position_map<size_t> close_enemies;
+        position_map<int> close_enemies;
         for (auto& player : game.players) {
             if (player->id == game.my_id) continue;
             const int CLOSE = INSPIRATION_RADIUS;
@@ -379,29 +374,17 @@ int main(int argc, char* argv[]) {
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
-            // How long will it take to get a meaningful amount of halite.
-            const int return_turn = MAX_HALITE * 0.05 / ewma + game.turn_number;
-            if (return_turn > MAX_TURNS && tasks[id] != BLOCK) {
-                if (ship->halite < MAX_HALITE * 0.05 &&
-                    game.players.size() == 4 &&
-                    current_halite * 1.0 / total_halite <= 0.05)
-                    tasks[id] = BLOCK;
-                else if (ship->halite >= MAX_HALITE * 0.05)
-                    tasks[id] = RETURN;
-            }
-
             // Return estimate if forced.
             const int forced_return_turn =
                 game.turn_number + closest_base_dist +
                 game_map->at(cell->closest_base)->close_ships * 0.3;
             // TODO: Dry run of return.
             if (all_empty || forced_return_turn > MAX_TURNS) {
-                if (tasks[id] != BLOCK) tasks[id] = HARD_RETURN;
+                tasks[id] = HARD_RETURN;
                 started_hard_return = true;
             }
 
             switch (tasks[id]) {
-                case BLOCK:
                 case EXPLORE:
                     if (ship->halite > HALITE_RETURN) tasks[id] = RETURN;
                     break;
@@ -433,7 +416,6 @@ int main(int argc, char* argv[]) {
             }
 
             switch (tasks[id]) {
-                case BLOCK:
                 case EXPLORE:
                     explorers.push_back(ship);
                     break;
@@ -442,19 +424,6 @@ int main(int argc, char* argv[]) {
                 case RETURN:
                     ship->next = cell->closest_base;
                     returners.push_back(ship);
-            }
-        }
-
-        EntityId block_target = -1;
-        Halite most_halite = 0;
-        for (auto player : game.players) {
-            Halite player_halite = 0;
-            if (player->id == game.my_id) continue;
-            for (auto& it : player->ships) player_halite += it.second->halite;
-            player_halite += player->halite;
-            if (player_halite > most_halite) {
-                block_target = player->id;
-                most_halite = player_halite;
             }
         }
 
@@ -493,30 +462,8 @@ int main(int argc, char* argv[]) {
                         game.players.size() == 4 || d <= INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (d <= 1 && cell->ship && cell->ship->owner != game.my_id)
+                    if (d <= 3 && cell->ship && cell->ship->owner != game.my_id)
                         profit += cell->ship->halite;
-
-                    if (tasks[ship->id] == BLOCK) {
-                        int best_block = 1e3;
-                        for (auto player : game.players) {
-                            if (player->id != block_target) continue;
-
-                            Position pp = player->shipyard->position;
-                            int d = game_map->calculate_distance(pp, p);
-                            best_block = min(best_block, d);
-                            for (auto& it : player->dropoffs) {
-                                pp = it.second->position;
-                                d = game_map->calculate_distance(pp, p);
-                                best_block = min(best_block, d);
-                            }
-                        }
-
-                        // Block the base or chase enemies.
-                        if (best_block == 1 || best_block == 2)
-                            profit = 5 * pow(10, 4 - best_block);
-                        else if (cell->ship && cell->ship->owner != game.my_id)
-                            profit = cell->ship->halite;
-                    }
 
                     if (!safe_to_move(ship, p)) profit = 0;
                     double rate = profit / max(1.0, d + dd);
@@ -526,7 +473,7 @@ int main(int argc, char* argv[]) {
                     while (pq.size() > explorers.size() + 5) pq.pop();
                 }
 
-                if (pq.empty()) pq.push(0);
+                if (pq.empty()) pq.push(5e3);
                 for (size_t i = 0; i < uncompressed_cost.size(); ++i) {
                     if (!is_top_target[i] && uncompressed_cost[i] <= pq.top())
                         is_top_target[i] = true;
@@ -569,7 +516,7 @@ int main(int argc, char* argv[]) {
 
                     map<Direction, double> best_walk;
                     double best = 1.0;
-                    for (size_t k = 0; k < 25; ++k) {
+                    for (size_t k = 0; k < 15; ++k) {
                         auto walk = random_walk(explorers[i], *it, best_walk);
                         best_walk[walk.first] =
                             max(best_walk[walk.first], walk.second);
@@ -672,7 +619,7 @@ int main(int argc, char* argv[]) {
                     h += ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
-            ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
+            ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma =
             game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 75;
