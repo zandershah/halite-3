@@ -369,10 +369,11 @@ int main(int argc, char* argv[]) {
             // How long will it take to get a meaningful amount of halite.
             const int return_turn = MAX_HALITE * 0.05 / ewma + game.turn_number;
             if (return_turn > MAX_TURNS && tasks[id] != BLOCK) {
-                if (!ship->halite && game.players.size() == 4 &&
+                if (ship->halite < MAX_HALITE * 0.05 &&
+                    game.players.size() == 4 &&
                     current_halite * 1.0 / total_halite <= 0.05)
                     tasks[id] = BLOCK;
-                else if (ship->halite > MAX_HALITE * 0.05)
+                else if (ship->halite >= MAX_HALITE * 0.05)
                     tasks[id] = RETURN;
             }
 
@@ -431,16 +432,16 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Block the target with the most ship halite.
         EntityId block_target = -1;
-        Halite most_ship_halite = 0;
+        Halite most_halite = 0;
         for (auto player : game.players) {
-            Halite ship_halite = 0;
+            Halite player_halite = 0;
             if (player->id == game.my_id) continue;
-            for (auto& it : player->ships) ship_halite += it.second->halite;
-            if (ship_halite > most_ship_halite) {
+            for (auto& it : player->ships) player_halite += it.second->halite;
+            player_halite += player->halite;
+            if (player_halite > most_halite) {
                 block_target = player->id;
-                most_ship_halite = ship_halite;
+                most_halite = player_halite;
             }
         }
 
