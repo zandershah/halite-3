@@ -633,7 +633,7 @@ int main(int argc, char* argv[]) {
                     h += ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
-            ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
+            ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma =
             game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 75;
