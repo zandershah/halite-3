@@ -24,7 +24,8 @@ struct GameMap {
         return at(entity->position);
     }
 
-    int calculate_distance(const Position& source, const Position& target) {
+    int calculate_distance(const Position& source,
+                           const Position& target) const {
         const auto& normalized_source = normalize(source);
         const auto& normalized_target = normalize(target);
 
@@ -36,8 +37,14 @@ struct GameMap {
 
         return toroidal_dx + toroidal_dy;
     }
+    int calculate_distance(std::shared_ptr<Ship> ship) const {
+        return calculate_distance(ship->position, ship->next);
+    }
+    int closest_base_dist(const Position& p) {
+        return calculate_distance(p, at(p)->closest_base);
+    }
 
-    Position normalize(const Position& position) {
+    Position normalize(const Position& position) const {
         const int x = ((position.x % width) + width) % width;
         const int y = ((position.y % height) + height) % height;
         return {x, y};
