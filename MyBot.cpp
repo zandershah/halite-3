@@ -219,9 +219,29 @@ bool ideal_dropoff(Position p, Position f) {
     for (int dy = -CLOSE_MINE; dy <= CLOSE_MINE; ++dy) {
         for (int dx = -CLOSE_MINE; dx <= CLOSE_MINE; ++dx) {
             if (abs(dx) + abs(dy) > CLOSE_MINE) continue;
-            MapCell* cell = game_map->at(Position(p.x + dx, p.y + dy));
-            if (cell->ship && cell->ship->owner != game.my_id) continue;
-            halite_around += cell->halite;
+
+            Position pd(p.x + dx, p.y + dy);
+            if (game_map->at(pd)->ship &&
+                game_map->at(pd)->ship->owner != game.my_id)
+                continue;
+
+            // In our territory.
+            int ally_base = 1e3, evil_base = 1e3;
+            for (auto& player : game.players) {
+                int d = game_map->calculate_distance(player->shipyard->position,
+                                                     pd);
+                for (auto& it : player->dropoffs) {
+                    d = min(d, game_map->calculate_distance(it.second->position,
+                                                            pd));
+                }
+                if (player->id == game.my_id)
+                    ally_base = min(ally_base, d);
+                else
+                    evil_base = min(evil_base, d);
+            }
+
+            if (ally_base <= evil_base)
+                halite_around += game_map->at(pd)->halite;
         }
     }
     Halite saved =
