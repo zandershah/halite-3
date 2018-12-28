@@ -127,7 +127,7 @@ pair<vector<Direction>, double> random_walk(shared_ptr<Ship> ship, Position d) {
 
         if (walk.empty()) {
             auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
-                return game_map->at(p.doff(d))->is_occupied();
+                return !safe_to_move(ship, p.doff(d));
             });
             moves.erase(rit, moves.end());
         }
