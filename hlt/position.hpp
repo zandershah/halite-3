@@ -21,7 +21,7 @@ struct Position {
         return x != other.x || y != other.y;
     }
 
-    Position directional_offset(Direction d) const {
+    Position doff(Direction d) const {
         auto dx = 0;
         auto dy = 0;
         switch (d) {
@@ -50,10 +50,8 @@ struct Position {
     }
 
     std::array<Position, 4> get_surrounding_cardinals() {
-        return {{directional_offset(Direction::NORTH),
-                 directional_offset(Direction::SOUTH),
-                 directional_offset(Direction::EAST),
-                 directional_offset(Direction::WEST)}};
+        return {{doff(Direction::NORTH), doff(Direction::SOUTH),
+                 doff(Direction::EAST), doff(Direction::WEST)}};
     }
 };
 

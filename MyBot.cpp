@@ -98,14 +98,13 @@ void bfs(position_map<Halite>& dist, Position source) {
     }
 }
 
-pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
-                                    map<Direction, double>& best_walk) {
+pair<vector<Direction>, double> random_walk(shared_ptr<Ship> ship, Position d) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     Position p = ship->position;
     Halite ship_halite = ship->halite;
     Halite map_halite = game_map->at(ship)->halite;
-    Direction first_direction = Direction::UNDEFINED;
+    vector<Direction> walk;
     Halite burned_halite = 0;
 
     double t = 1;
@@ -126,19 +125,26 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
     for (; p != d; ++t) {
         auto moves = game_map->get_moves(p, d, ship_halite, map_halite);
 
+        if (walk.empty()) {
+            auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
+                return game_map->at(p.doff(d))->is_occupied();
+            });
+            moves.erase(rit, moves.end());
+        }
+        if (moves.empty()) break;
+
         Direction d = moves[rand() % moves.size()];
-        if (first_direction == Direction::UNDEFINED) first_direction = d;
+        walk.push_back(d);
 
         // Early exit.
         Halite best_mine = MAX_HALITE;
         if (tasks[ship->id] == EXPLORE) best_mine += MAX_HALITE;
-        if (walk_cost(best_mine) < best_walk[first_direction]) break;
 
         if (d == Direction::STILL) {
             Halite mined = extracted(map_halite);
             mined = min(mined, MAX_HALITE - ship_halite);
             ship_halite += mined;
-            if (game.game_map->at(p)->inspired) {
+            if (game_map->at(p)->inspired) {
                 ship_halite += INSPIRED_BONUS_MULTIPLIER * mined;
                 ship_halite = min(ship_halite, MAX_HALITE);
             }
@@ -146,7 +152,7 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
         } else {
             const Halite burned = map_halite / MOVE_COST_RATIO;
             ship_halite -= burned;
-            p = game_map->normalize(p.directional_offset(d));
+            p = game_map->normalize(p.doff(d));
             map_halite = game_map->at(p)->halite;
 
             burned_halite += burned;
@@ -164,7 +170,8 @@ pair<Direction, double> random_walk(shared_ptr<Ship> ship, Position d,
     }
 
     const Halite end_halite = ship_halite + end_mine - burned_halite;
-    return {first_direction, walk_cost(end_halite)};
+    if (walk.empty()) walk.push_back(Direction::STILL);
+    return {move(walk), walk_cost(end_halite)};
 }
 
 position_map<double> generate_costs(shared_ptr<Ship> ship) {
@@ -188,12 +195,13 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     map<Direction, double> best_walk;
     double best = 1.0;
     for (size_t i = 0; i < min(10 * d, MAX_WALKS); ++i) {
-        auto walk = random_walk(ship, ship->next, best_walk);
-        best_walk[walk.first] = max(best_walk[walk.first], walk.second);
+        auto walk = random_walk(ship, ship->next);
+        best_walk[walk.first.front()] =
+            max(best_walk[walk.first.front()], walk.second);
         best = max(best, walk.second);
     }
     for (auto& it : best_walk) {
-        Position pp = game_map->normalize(p.directional_offset(it.first));
+        Position pp = game_map->normalize(p.doff(it.first));
         surrounding_cost[pp] = pow(1e3, 1 - it.second / best);
     }
 
@@ -427,8 +435,7 @@ int main(int argc, char* argv[]) {
             // Hard return.
             if (tasks[id] == HARD_RETURN && closest_base_dist <= 1) {
                 for (Direction d : ALL_CARDINALS) {
-                    if (ship->position.directional_offset(d) ==
-                        cell->closest_base) {
+                    if (ship->position.doff(d) == cell->closest_base) {
                         command_queue.push_back(ship->move(d));
                     }
                 }
@@ -534,12 +541,9 @@ int main(int argc, char* argv[]) {
                     auto it = targets.begin();
                     advance(it, j);
 
-                    map<Direction, double> best_walk;
                     double best = 1.0;
                     for (size_t k = 0; k < 15; ++k) {
-                        auto walk = random_walk(explorers[i], *it, best_walk);
-                        best_walk[walk.first] =
-                            max(best_walk[walk.first], walk.second);
+                        auto walk = random_walk(explorers[i], *it);
                         best = max(best, walk.second);
                     }
                     cost.push_back(-best + 5e3);
@@ -555,7 +559,7 @@ int main(int argc, char* argv[]) {
                 auto it = targets.begin();
                 advance(it, target_space[assignment[i]]);
                 explorers[i]->next = *it;
-                // message(explorers[i]->next, "green");
+                message(explorers[i]->next, "green");
             }
         }
 
@@ -567,6 +571,50 @@ int main(int argc, char* argv[]) {
             explorers.insert(explorers.end(), returners.begin(),
                              returners.end());
 
+#if 0
+            sort(explorers.begin(), explorers.end(),
+                 [&](shared_ptr<Ship> u, shared_ptr<Ship> v) {
+                     return game_map->calculate_distance(u->position, u->next) <
+                            game_map->calculate_distance(v->position, v->next);
+                 });
+
+            // TODO: Optimize.
+            for (auto ship : explorers) {
+                Position p = ship->position;
+
+                vector<Direction> path = {Direction::STILL};
+                double best = 1.0;
+
+                const size_t d =
+                    game_map->calculate_distance(ship->position, ship->next);
+
+                // TODO: STILL SELF COLLIDING.
+                for (size_t i = 0; i < min(10 * d, MAX_WALKS); ++i) {
+                    auto walk = random_walk(ship, ship->next);
+                    if (game_map->at(p.doff(walk.first.front()))->is_occupied())
+                        continue;
+                    if (best < walk.second) {
+                        best = walk.second;
+                        path = move(walk.first);
+                    }
+                }
+
+                log::log("WORKING ON", ship->id);
+
+                command_queue.push_back(ship->move(path.front()));
+                game_map->at(p.doff(path.front()))->mark_unsafe(ship);
+                if (path.front() != Direction::STILL)
+                    last_moved[ship->id] = game.turn_number;
+
+                log::log("PATH IS");
+                for (Direction d : path) {
+                    p = p.doff(d);
+                    log::log(p);
+                    game_map->at(p)->claimed = true;
+                }
+            }
+
+#else
             set<Position> local_targets;
             for (auto ship : explorers) {
                 Position p = ship->position;
@@ -609,8 +657,8 @@ int main(int argc, char* argv[]) {
                     command_queue.push_back(explorers[i]->stay_still());
                 }
                 for (Direction d : ALL_CARDINALS) {
-                    Position pp = game_map->normalize(
-                        explorers[i]->position.directional_offset(d));
+                    Position pp =
+                        game_map->normalize(explorers[i]->position.doff(d));
                     if (pp == move_space[assignment[i]]) {
                         command_queue.push_back(explorers[i]->move(d));
                         game_map->at(pp)->mark_unsafe(explorers[i]);
@@ -619,11 +667,13 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+#endif
         }
 
         end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
 
+#if 1
         // Save for dropoff.
         for (auto ship : explorers) {
             bool ideal = ideal_dropoff(ship->next, ship->position);
@@ -631,6 +681,7 @@ int main(int argc, char* argv[]) {
                 DROPOFF_COST - game_map->at(ship)->halite - ship->halite;
             if (ideal) wanted = wanted ? min(wanted, delta) : delta;
         }
+#endif
 
         if (game.turn_number % 5 == 0) {
             Halite h = 0;
