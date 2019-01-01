@@ -184,7 +184,7 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
     if (game.turn_number + turns > MAX_TURNS) ws.ship_halite = 0;
 
     // Final mine.
-    while (1) {
+    for (size_t i = 0; i < 10; ++i) {
         WalkState ws_copy = ws;
         ws_copy.move(Direction::STILL);
         if (max(0.0, ws.evaluate()) >= ws_copy.evaluate()) break;
@@ -470,7 +470,9 @@ int main(int argc, char* argv[]) {
             vector<double> top_score;
             top_score.reserve(explorers.size());
 
-            for (auto& ship : explorers) {
+            for (auto it = explorers.begin(); it != explorers.end();) {
+                auto ship = *it;
+
                 position_map<Halite> dist;
                 bfs(dist, ship->position);
                 priority_queue<double> pq;
@@ -502,16 +504,26 @@ int main(int argc, char* argv[]) {
 
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
-                    while (pq.size() > 15) pq.pop();
+                    while (pq.size() > max(explorers.size(), 15ul)) pq.pop();
                 }
 
-                if (pq.empty()) pq.push(5e3);
+                if (pq.empty()) {
+                    log::log("Skipping exploration for", ship->id);
+                    tasks[ship->id] = RETURN;
+                    ship->next = game_map->at(ship)->closest_base;
+                    returners.push_back(ship);
+                    it = explorers.erase(it);
+                    continue;
+                }
+
                 for (size_t i = 0; i < uncompressed_cost.size(); ++i) {
                     if (!is_top_target[i] && uncompressed_cost[i] <= pq.top())
                         is_top_target[i] = true;
                 }
                 top_score.push_back(pq.top());
                 uncompressed_cost_matrix.push_back(move(uncompressed_cost));
+
+                ++it;
             }
 
             // Coordinate compress.
