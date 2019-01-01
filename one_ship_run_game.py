@@ -6,8 +6,8 @@ os.system('set -e')
 os.system('cmake .')
 os.system('make')
 
-bots = ['./MyBot'] + ['./bots/MyBot_Dec18OneShip']
+bots = ['./MyBot'] + ['./bots/Dec28OneShip']
 
 seed = randint(0, (1 << 31) - 1) if len(sys.argv) == 1 else sys.argv[1]
 
-os.system('./halite --replay-directory replays/ -vvv --seed {} {}'.format(seed, ' '.join(bots)))
+os.system('./halite --replay-directory replays/ -turn-limit 100 -vvv --seed {} {}'.format(seed, ' '.join(bots)))
