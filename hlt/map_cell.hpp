@@ -17,6 +17,7 @@ struct MapCell {
 
     Position closest_base;
     bool inspired = false;
+    size_t claimed = 0;
     size_t close_ships = 0;
 
     MapCell(int x, int y, Halite halite)

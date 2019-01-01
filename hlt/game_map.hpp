@@ -44,6 +44,23 @@ struct GameMap {
     }
 
     std::vector<Direction> get_moves(const Position& source,
+                                     std::set<Position> vis, Halite ship_halite,
+                                     Halite map_halite) {
+        std::vector<Direction> possible_moves;
+
+        if (map_halite) possible_moves.push_back(Direction::STILL);
+        if (ship_halite < map_halite / constants::MOVE_COST_RATIO)
+            return possible_moves;
+        for (Direction d : ALL_CARDINALS) possible_moves.push_back(d);
+
+        auto rit = std::remove_if(
+            possible_moves.begin(), possible_moves.end(),
+            [&](Direction d) { return vis.count(source.doff(d)); });
+        possible_moves.erase(rit, possible_moves.end());
+        return possible_moves;
+    }
+
+    std::vector<Direction> get_moves(const Position& source,
                                      const Position& destination,
                                      Halite ship_halite, Halite map_halite) {
         const auto& normalized_source = normalize(source);
