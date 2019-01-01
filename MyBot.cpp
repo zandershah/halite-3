@@ -144,10 +144,7 @@ struct WalkState {
         const Halite h = ship_halite - burned_halite;
         double rate;
         if (tasks[ship_id] == EXPLORE) {
-            if (game.players.size() <= 4)
-                rate = (h - starting_ship_halite) / turns;
-            else
-                rate = h / turns;
+            rate = (h - starting_ship_halite) / turns;
         } else {
             rate = h / pow(turns, 2);
         }
@@ -230,7 +227,7 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     return surrounding_cost;
 }
 
-bool ideal_dropoff(Position p, Position f) {
+Halite ideal_dropoff(Position p, Position f) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     const int close = max(15, game_map->width / 3);
@@ -278,7 +275,7 @@ bool ideal_dropoff(Position p, Position f) {
     double bases = 2.0 + game.me->dropoffs.size();
     ideal &= game.me->ships.size() / bases >= 8;
 
-    return ideal;
+    return ideal * (DROPOFF_COST - game_map->at(p)->halite);
 }
 Halite ideal_dropoff(Position p) { return ideal_dropoff(p, p); }
 
@@ -344,7 +341,12 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+
+        // TODO: Attempting to plan dropoffs.
         Halite current_halite = 0;
+        bool all_empty = true;
+        set<Position> targets;
+        Position dropoff_position = me->shipyard->position;
         for (vector<MapCell>& cell_row : game_map->cells) {
             for (MapCell& cell : cell_row) {
                 Position p = cell.position;
@@ -360,14 +362,19 @@ int main(int argc, char* argv[]) {
                 }
 
                 current_halite += cell.halite;
+                all_empty &= !cell.halite;
+                targets.insert(cell.position);
+
+                if (ideal_dropoff(game_map->at(dropoff_position)->closest_base,
+                                  dropoff_position) <
+                    ideal_dropoff(cell.closest_base, p)) {
+                    dropoff_position = p;
+                }
             }
         }
+        message(dropoff_position, "green");
         for (auto& it : me->ships)
             ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
-
-        set<Position> targets;
-        for (const vector<MapCell>& cell_row : game_map->cells)
-            for (const MapCell& cell : cell_row) targets.insert(cell.position);
 
         for (auto& player : game.players) {
             if (player->id == me->id) continue;
@@ -390,11 +397,6 @@ int main(int argc, char* argv[]) {
 
         log::log("Tasks.");
         vector<shared_ptr<Ship>> returners, explorers;
-
-        bool all_empty = true;
-        for (const vector<MapCell>& cell_row : game_map->cells)
-            for (const MapCell& cell : cell_row) all_empty &= !cell.halite;
-
         for (auto& it : me->ships) {
             shared_ptr<Ship> ship = it.second;
             const EntityId id = ship->id;
@@ -454,7 +456,8 @@ int main(int argc, char* argv[]) {
                 case HARD_RETURN:
                     if (ship->position == cell->closest_base) break;
                 case RETURN:
-                    ship->next = cell->closest_base;
+                    if (ship->next == ship->position)
+                        ship->next = cell->closest_base;
                     returners.push_back(ship);
             }
         }
@@ -660,7 +663,7 @@ int main(int argc, char* argv[]) {
 
         // Save for dropoff.
         for (auto ship : explorers) {
-            bool ideal = ideal_dropoff(ship->next, ship->position);
+            Halite ideal = ideal_dropoff(ship->position, ship->next);
             const Halite delta =
                 DROPOFF_COST - game_map->at(ship)->halite - ship->halite;
             if (ideal) wanted = wanted ? min(wanted, delta) : delta;
