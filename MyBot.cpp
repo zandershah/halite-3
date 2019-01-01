@@ -302,7 +302,7 @@ int main(int argc, char* argv[]) {
         vector<Command> command_queue;
 
         log::log("Dropoffs.");
-        bool wanted = false;
+        Halite wanted = 0;
 #if 1
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
@@ -317,11 +317,10 @@ int main(int argc, char* argv[]) {
                 game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
                     game.my_id, -ship->id, ship->position.x, ship->position.y);
                 log::log("Dropoff created at", ship->position);
-                wanted = false;
 
                 me->ships.erase(it++);
             } else {
-                if (ideal) wanted = true;
+                // if (ideal) wanted = wanted ? min(wanted, delta) : delta;
                 ++it;
             }
         }
@@ -659,6 +658,14 @@ int main(int argc, char* argv[]) {
         end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
 
+        // Save for dropoff.
+        for (auto ship : explorers) {
+            bool ideal = ideal_dropoff(ship->next, ship->position);
+            const Halite delta =
+                DROPOFF_COST - game_map->at(ship)->halite - ship->halite;
+            if (ideal) wanted = wanted ? min(wanted, delta) : delta;
+        }
+
         if (game.turn_number % 5 == 0) {
             Halite h = 0;
             for (auto ship : explorers) {
@@ -682,7 +689,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        bool should_spawn = me->halite >= SHIP_COST + wanted * DROPOFF_COST;
+        bool should_spawn = me->halite >= SHIP_COST + wanted;
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
 
