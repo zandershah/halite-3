@@ -227,10 +227,10 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     return surrounding_cost;
 }
 
-Halite ideal_dropoff(Position p, Position f) {
+Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    const int close = max(15, game_map->width / 3);
+    const int close = game_map->width / 3;
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
         game_map->calculate_distance(p, game.me->shipyard->position) <= close;
@@ -254,9 +254,10 @@ Halite ideal_dropoff(Position p, Position f) {
             halite_around += game_map->at(pd)->halite;
         }
     }
-    Halite saved =
-        halite_around / MAX_HALITE * ewma *
-        game_map->calculate_distance(p, game_map->at(p)->closest_base);
+    Halite saved = halite_around;
+    saved -= sqrt(halite_around / MAX_HALITE) * ewma *
+             game_map->calculate_distance(p, game_map->at(p)->closest_base);
+
     // Approximate saved by returing.
     for (auto& it : game.me->ships) {
         auto ship = it.second;
@@ -265,19 +266,17 @@ Halite ideal_dropoff(Position p, Position f) {
         int dd = game_map->calculate_distance(ship->position, p);
         saved += max(0, d - dd) * ewma;
     }
-    saved -= ewma * game_map->calculate_distance(p, f);
 
     bool ideal = saved >= DROPOFF_COST - game_map->at(p)->halite;
     ideal &= !local_dropoffs;
-    ideal &= game.turn_number <= MAX_TURNS - 75;
+    ideal &= game.turn_number <= MAX_TURNS - 50;
     ideal &= !started_hard_return;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() / bases >= 8;
+    ideal &= game.me->ships.size() / bases >= 7;
 
-    return ideal * (DROPOFF_COST - game_map->at(p)->halite);
+    return ideal * saved;
 }
-Halite ideal_dropoff(Position p) { return ideal_dropoff(p, p); }
 
 int main(int argc, char* argv[]) {
     game.ready("HaoHaoBot");
@@ -289,6 +288,7 @@ int main(int argc, char* argv[]) {
         for (const MapCell& cell : cells) total_halite += cell.halite;
 
     unordered_map<EntityId, Halite> last_halite;
+    set<Position> next_turn_dropoffs;
 
     for (;;) {
         game.update_frame();
@@ -342,11 +342,13 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // TODO: Attempting to plan dropoffs.
+        for (Position p : next_turn_dropoffs) {
+            message(p, "blue");
+        }
+
         Halite current_halite = 0;
         bool all_empty = true;
         set<Position> targets;
-        Position dropoff_position = me->shipyard->position;
         for (vector<MapCell>& cell_row : game_map->cells) {
             for (MapCell& cell : cell_row) {
                 Position p = cell.position;
@@ -360,19 +362,19 @@ int main(int argc, char* argv[]) {
                         cell.closest_base = it.second->position;
                     }
                 }
+                for (Position pp : next_turn_dropoffs) {
+                    if (game_map->calculate_distance(p, pp) <
+                        game_map->calculate_distance(p, cell.closest_base)) {
+                        cell.closest_base = pp;
+                    }
+                }
 
                 current_halite += cell.halite;
                 all_empty &= !cell.halite;
                 targets.insert(cell.position);
-
-                if (ideal_dropoff(game_map->at(dropoff_position)->closest_base,
-                                  dropoff_position) <
-                    ideal_dropoff(cell.closest_base, p)) {
-                    dropoff_position = p;
-                }
             }
         }
-        message(dropoff_position, "green");
+
         for (auto& it : me->ships)
             ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
 
@@ -658,16 +660,21 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        next_turn_dropoffs.clear();
+        for (auto ship : explorers) {
+            Halite ideal = ideal_dropoff(ship->next);
+            if (!ideal) continue;
+
+            Halite delta =
+                DROPOFF_COST - ship->halite - game_map->at(ship->next)->halite;
+            wanted = wanted ? min(wanted, delta) : delta;
+            if (delta <= me->halite) {
+                next_turn_dropoffs.insert(ship->next);
+            }
+        }
+
         end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
-
-        // Save for dropoff.
-        for (auto ship : explorers) {
-            Halite ideal = ideal_dropoff(ship->position, ship->next);
-            const Halite delta =
-                DROPOFF_COST - game_map->at(ship)->halite - ship->halite;
-            if (ideal) wanted = wanted ? min(wanted, delta) : delta;
-        }
 
         if (game.turn_number % 5 == 0) {
             Halite h = 0;
@@ -676,10 +683,10 @@ int main(int argc, char* argv[]) {
                     h += ship->halite - last_halite[ship->id];
                 last_halite[ship->id] = ship->halite;
             }
-            ewma = ALPHA * h / (explorers.size() * 5) + (1 - ALPHA) * ewma;
+            ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma =
-            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 75;
+            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 50;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
