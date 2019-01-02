@@ -47,20 +47,22 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     MapCell* cell = game_map->at(p);
     if (!cell->is_occupied()) return true;
     if (ship->owner == cell->ship->owner) return false;
-    if (tasks[ship->id] == HARD_RETURN) return true;
+    if (cell->has_structure() && cell->structure->owner != ship->owner)
+        return false;
+    if (tasks[ship->id] == HARD_RETURN || tasks[ship->id] == BLOCK) return true;
 
     // Estimate who is closer.
     int ally = 0, evil = 0;
     for (auto& it : game.me->ships) {
         if (it.second->id == ship->id || tasks[it.second->id] != EXPLORE)
             continue;
-        int d = game_map->calculate_distance(p, it.second->position);
-        ally += pow(2, 5 - d);
+        int d = game_map->calculate_distance(p, it.second->position) + 1;
+        ally += pow(1.5, 4 - d);
     }
     for (auto& it : game.players[cell->ship->owner]->ships) {
         if (it.second->id == cell->ship->id) continue;
         int d = game_map->calculate_distance(p, it.second->position);
-        evil += pow(2, 5 - d);
+        evil += pow(1.5, 4 - d);
     }
     return game.players.size() == 2 && ally > evil;
 }
@@ -223,14 +225,16 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
         surrounding_cost[pp] = pow(1e3, 1 - it.second / best);
     }
 
-    if (last_moved[ship->id] <= game.turn_number - 5) surrounding_cost[p] = 1e7;
+    if (last_moved[ship->id] <= game.turn_number - 5 &&
+        tasks[ship->id] != BLOCK)
+        surrounding_cost[p] = 1e7;
     return surrounding_cost;
 }
 
 Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    const int close = game_map->width / 3;
+    const int close = max(15, game_map->width / 3);
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
         game_map->calculate_distance(p, game.me->shipyard->position) <= close;
@@ -288,7 +292,6 @@ int main(int argc, char* argv[]) {
         for (const MapCell& cell : cells) total_halite += cell.halite;
 
     unordered_map<EntityId, Halite> last_halite;
-    set<Position> next_turn_dropoffs;
 
     for (;;) {
         game.update_frame();
@@ -342,10 +345,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        for (Position p : next_turn_dropoffs) {
-            message(p, "blue");
-        }
-
         Halite current_halite = 0;
         bool all_empty = true;
         set<Position> targets;
@@ -360,12 +359,6 @@ int main(int argc, char* argv[]) {
                     if (game_map->calculate_distance(p, it.second->position) <
                         game_map->calculate_distance(p, cell.closest_base)) {
                         cell.closest_base = it.second->position;
-                    }
-                }
-                for (Position pp : next_turn_dropoffs) {
-                    if (game_map->calculate_distance(p, pp) <
-                        game_map->calculate_distance(p, cell.closest_base)) {
-                        cell.closest_base = pp;
                     }
                 }
 
@@ -385,15 +378,15 @@ int main(int argc, char* argv[]) {
                 Position p = ship->position;
                 MapCell* cell = game_map->at(p);
 
-                if (game_map->calculate_distance(p, cell->closest_base) <= 1)
+                if (game_map->calculate_distance(p, cell->closest_base) <= 3)
                     continue;
 
-                cell->mark_unsafe(it.second);
-
-                if (hard_stuck(it.second)) continue;
+                if (ship->halite < cell->halite + 500) cell->mark_unsafe(ship);
+                if (ship->halite < cell->halite - 500 || hard_stuck(ship))
+                    continue;
 
                 for (Position pp : p.get_surrounding_cardinals())
-                    game_map->at(pp)->mark_unsafe(it.second);
+                    game_map->at(pp)->mark_unsafe(ship);
             }
         }
 
@@ -411,17 +404,27 @@ int main(int argc, char* argv[]) {
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
+            // How long will it take to get a meaningful amount of halite.
+            const int return_turn = MAX_HALITE * 0.05 / ewma + game.turn_number;
+            if (return_turn > MAX_TURNS && tasks[id] != BLOCK) {
+                if (ship->halite)
+                    tasks[id] = RETURN;
+                else
+                    tasks[id] = BLOCK;
+            }
+
             // Return estimate if forced.
             const int forced_return_turn =
                 game.turn_number + closest_base_dist +
                 game_map->at(cell->closest_base)->close_ships * 0.3;
             // TODO: Dry run of return.
             if (all_empty || forced_return_turn > MAX_TURNS) {
-                tasks[id] = HARD_RETURN;
+                if (tasks[id] != BLOCK) tasks[id] = HARD_RETURN;
                 started_hard_return = true;
             }
 
             switch (tasks[id]) {
+                case BLOCK:
                 case EXPLORE:
                     if (ship->halite > HALITE_RETURN) tasks[id] = RETURN;
                     break;
@@ -452,6 +455,7 @@ int main(int argc, char* argv[]) {
             }
 
             switch (tasks[id]) {
+                case BLOCK:
                 case EXPLORE:
                     explorers.push_back(ship);
                     break;
@@ -503,6 +507,26 @@ int main(int argc, char* argv[]) {
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     if (d <= 3 && cell->ship && cell->ship->owner != game.my_id)
                         profit += cell->ship->halite;
+
+                    if (tasks[ship->id] == BLOCK) {
+                        int best_block = 1e3;
+                        for (auto player : game.players) {
+                            if (player->id == me->id) continue;
+
+                            int d = game_map->calculate_distance(
+                                player->shipyard->position, p);
+                            best_block = min(best_block, d);
+                            for (auto& it : player->dropoffs) {
+                                d = game_map->calculate_distance(
+                                    it.second->position, p);
+                                best_block = min(best_block, d);
+                            }
+                        }
+                        if (best_block == 1)
+                            profit = 5e3 * (d + dd);
+                        else if (best_block == 2)
+                            profit = 5e2 * (d + dd);
+                    }
 
                     if (!safe_to_move(ship, p)) profit = 0;
                     double rate = profit / max(1.0, d + dd);
@@ -660,17 +684,11 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        next_turn_dropoffs.clear();
         for (auto ship : explorers) {
             Halite ideal = ideal_dropoff(ship->next);
-            if (!ideal) continue;
-
             Halite delta =
                 DROPOFF_COST - ship->halite - game_map->at(ship->next)->halite;
-            wanted = wanted ? min(wanted, delta) : delta;
-            if (delta <= me->halite) {
-                next_turn_dropoffs.insert(ship->next);
-            }
+            if (ideal) wanted = wanted ? min(wanted, delta) : delta;
         }
 
         end = steady_clock::now();
