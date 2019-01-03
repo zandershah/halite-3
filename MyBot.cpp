@@ -21,6 +21,8 @@ const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
+double halite_percentage = 0.0;
+
 bool started_hard_return = false;
 
 unordered_map<EntityId, int> last_moved;
@@ -28,6 +30,8 @@ unordered_map<EntityId, int> last_moved;
 inline Halite extracted(Halite h) {
     return (h + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
 }
+
+queue<shared_ptr<Dropoff>> future_dropoffs;
 
 // Fluorine JSON.
 stringstream flog;
@@ -222,7 +226,8 @@ position_map<double> generate_costs(shared_ptr<Ship> ship) {
     }
     for (auto& it : best_walk) {
         Position pp = game_map->normalize(p.doff(it.first));
-        surrounding_cost[pp] = pow(1e3, 1 - it.second / best);
+        surrounding_cost[pp] = 5e3 - it.second;
+        // pow(1e3, 1 - it.second / best);
     }
 
     if (last_moved[ship->id] <= game.turn_number - 5 &&
@@ -252,17 +257,21 @@ Halite ideal_dropoff(Position p) {
 
             Position pd(p.x + dx, p.y + dy);
 
-            bool too_close = false;
+            shared_ptr<Entity> closest = game.me->shipyard;
             for (auto player : game.players) {
-                if (player->id == game.my_id) continue;
-                too_close |= game_map->calculate_distance(
-                                 pd, player->shipyard->position) <= CLOSE_MINE;
-                for (auto& it : player->dropoffs)
-                    too_close |= game_map->calculate_distance(
-                                     pd, it.second->position) <= CLOSE_MINE;
+                int d = game_map->calculate_distance(
+                    pd, player->shipyard->position);
+                if (d < game_map->calculate_distance(pd, closest->position))
+                    closest = player->shipyard;
+                for (auto& it : player->dropoffs) {
+                    d = game_map->calculate_distance(pd, it.second->position);
+                    if (d < game_map->calculate_distance(pd, closest->position))
+                        closest = it.second;
+                }
             }
 
-            if (!too_close) halite_around += game_map->at(pd)->halite;
+            if (closest->id == game.my_id)
+                halite_around += game_map->at(pd)->halite;
         }
     }
     Halite saved = halite_around;
@@ -282,9 +291,10 @@ Halite ideal_dropoff(Position p) {
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 50;
     ideal &= !started_hard_return;
+    ideal &= halite_percentage >= 0.1;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() / bases >= 8;
+    ideal &= game.me->ships.size() / bases >= 3 + bases;
 
     return ideal * saved;
 }
@@ -321,7 +331,7 @@ int main(int argc, char* argv[]) {
             if (ideal && delta <= me->halite) {
                 me->halite -= max(0, delta);
                 command_queue.push_back(ship->make_dropoff());
-                game.me->dropoffs[-ship->id] = make_shared<Dropoff>(
+                me->dropoffs[-ship->id] = make_shared<Dropoff>(
                     game.my_id, -ship->id, ship->position.x, ship->position.y);
                 log::log("Dropoff created at", ship->position);
 
@@ -332,6 +342,14 @@ int main(int argc, char* argv[]) {
             }
         }
 #endif
+        while (!future_dropoffs.empty()) {
+            shared_ptr<Dropoff> future_dropoff = future_dropoffs.front();
+            future_dropoffs.pop();
+
+            if (!me->dropoffs.count(future_dropoff->id))
+                me->dropoffs[future_dropoff->id] = future_dropoff;
+        }
+
         auto end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
 
@@ -374,6 +392,7 @@ int main(int argc, char* argv[]) {
                 targets.insert(cell.position);
             }
         }
+        halite_percentage = current_halite * 1.0 / total_halite;
 
         for (auto& it : me->ships)
             ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
@@ -531,7 +550,7 @@ int main(int argc, char* argv[]) {
                         if (best_block == 1)
                             profit = 5e3;
                         else if (best_block == 2)
-                            profit = 5e2;
+                            profit = 1e2;
                     }
 
                     if (!safe_to_move(ship, p)) profit = 0;
@@ -623,7 +642,7 @@ int main(int argc, char* argv[]) {
 
             for (size_t i = 0; i < explorers.size(); ++i) {
                 explorers[i]->next = target_space[assignment[i]];
-                // message(explorers[i]->next, "green");
+                message(explorers[i]->next, "green");
             }
         }
 
@@ -662,6 +681,8 @@ int main(int argc, char* argv[]) {
                 for (auto& it : surrounding_cost) {
                     if (safe_to_move(ship, it.first))
                         cost[move_indices[it.first]] = it.second;
+                    else if (game_map->at(it.first)->ship->owner != me->id)
+                        cost[move_indices[it.first]] = 1e7;
                 }
 
                 cost_matrix.push_back(move(cost));
@@ -692,9 +713,15 @@ int main(int argc, char* argv[]) {
 
         for (auto ship : explorers) {
             Halite ideal = ideal_dropoff(ship->next);
-            Halite delta =
-                DROPOFF_COST - ship->halite - game_map->at(ship->next)->halite;
-            if (ideal) wanted = wanted ? min(wanted, delta) : delta;
+            Halite delta = DROPOFF_COST - game_map->at(ship->next)->halite;
+            if (ideal) {
+                if (delta <= me->halite) {
+                    log::log("Waiting on", ship->next, delta, me->halite);
+                    future_dropoffs.push(make_shared<Dropoff>(
+                        game.my_id, -ship->id, ship->next.x, ship->next.y));
+                }
+                wanted = max(wanted, delta);
+            }
         }
 
         end = steady_clock::now();
@@ -728,7 +755,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
-        should_spawn &= current_halite * 1.0 / total_halite >= 0.1;
+        should_spawn &= halite_percentage >= 0.1;
 
 #if 0
         should_spawn &= me->ships.empty();
