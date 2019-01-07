@@ -62,18 +62,17 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         if (it.second->id == ship->id || tasks[it.second->id] != EXPLORE)
             continue;
         int d = game_map->calculate_distance(p, it.second->position) + 1;
-        ally += pow(1.5, 4 - d);
+        ally += pow(1.5, 3 - d);
     }
     for (auto& it : game.players[cell->ship->owner]->ships) {
         if (it.second->id == cell->ship->id) continue;
         int d = game_map->calculate_distance(p, it.second->position);
-        enemy += pow(1.5, 4 - d);
+        enemy += pow(1.5, 3 - d);
     }
 
-    if (game.players.size() == 2) return ally > enemy;
-    return false;
-    return ally > enemy + 5 &&
-           ship->halite + cell->ship->halite >= MAX_HALITE * 0.5;
+    if (game.players.size() == 2) return ally >= enemy;
+    return ally >= enemy + 5 &&
+           ship->halite + cell->ship->halite + cell->halite >= MAX_HALITE * 0.5;
 }
 
 void bfs(position_map<Halite>& dist, Position source) {
@@ -126,8 +125,8 @@ struct WalkState {
     Halite starting_ship_halite, ship_halite, map_halite, burned_halite = 0;
     double turns = 1;
     vector<Direction> walk;
-    // TODO: Prioritize early halite.
 
+    // TODO: Prioritize early halite.
     void mine() {
         Halite mined = extracted(map_halite);
         mined = min(mined, MAX_HALITE - ship_halite);
@@ -336,6 +335,12 @@ int main(int argc, char* argv[]) {
             }
         }
 #endif
+        for (auto player : game.players) {
+            for (auto it : player->dropoffs) {
+                if (!new_dropoffs.count(it.second->position))
+                    new_dropoffs[it.second->position] = game.turn_number;
+            }
+        }
         while (!future_dropoffs.empty()) {
             shared_ptr<Dropoff> future_dropoff = future_dropoffs.front();
             future_dropoffs.pop();
@@ -511,15 +516,22 @@ int main(int argc, char* argv[]) {
                         game_map->calculate_distance(p, cell->closest_base));
 
                     Halite profit = cell->halite - dist[p];
-                    bool should_inspire =
-                        game.players.size() == 4 || d <= INSPIRATION_RADIUS;
+
+                    bool should_inspire = true;
+                    for (auto player : game.players) {
+                        if (player->id == me->id) continue;
+                        for (auto it : player->ships) {
+                            should_inspire &= d <= game_map->calculate_distance(
+                                                       it.second->position, p);
+                        }
+                    }
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     if (d <= 3 && cell->ship && cell->ship->owner != game.my_id)
-                        profit += cell->ship->halite;
+                        profit += (1 + INSPIRED_BONUS_MULTIPLIER) *
+                                  cell->ship->halite;
 
-                        // TODO: Testing rush to new dropoffs.
-#if 1
+                    // TODO: Testing rush to new dropoffs.
                     for (auto it : new_dropoffs) {
                         if (it.second + 50 < game.turn_number) continue;
                         if (game_map->calculate_distance(it.first,
@@ -528,7 +540,6 @@ int main(int argc, char* argv[]) {
                             break;
                         }
                     }
-#endif
 
                     if (!safe_to_move(ship, p)) profit = 0;
                     double rate = profit / max(1.0, d + dd);
@@ -597,7 +608,7 @@ int main(int argc, char* argv[]) {
                     advance(it, j);
 
                     double best = 1.0;
-                    for (size_t k = 0; k < 15; ++k) {
+                    for (size_t k = 0; k < 25; ++k) {
                         auto ws = random_walk(explorers[i], *it);
                         best = max(best, ws.evaluate());
                     }
