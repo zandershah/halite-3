@@ -16,6 +16,8 @@ unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
 
+size_t PADDING = 25;
+
 const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
@@ -278,6 +280,7 @@ int main(int argc, char* argv[]) {
         auto begin = steady_clock::now();
 
         safe_cache.clear();
+        if (me->ships.size() >= 75 && game_map->width >= 56) PADDING = 15;
 
         vector<Command> command_queue;
 
@@ -522,7 +525,7 @@ int main(int argc, char* argv[]) {
 
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
-                    while (pq.size() > 25ul) pq.pop();
+                    while (pq.size() > PADDING) pq.pop();
                 }
 
                 if (pq.empty()) {
@@ -581,7 +584,7 @@ int main(int argc, char* argv[]) {
                         advance(it, j);
 
                         double best = 1.0;
-                        for (size_t k = 0; k < 25ul; ++k) {
+                        for (size_t k = 0; k < PADDING; ++k) {
                             auto ws = random_walk(explorers[i], *it);
                             best = max(best, ws.evaluate());
                         }
