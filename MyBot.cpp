@@ -513,7 +513,8 @@ int main(int argc, char* argv[]) {
 
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
-                    while (pq.size() > max(explorers.size(), 25ul)) pq.pop();
+                    while (pq.size() > max(explorers.size() / 2, 25ul))
+                        pq.pop();
                 }
 
                 if (pq.empty()) {
