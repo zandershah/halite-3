@@ -485,6 +485,19 @@ int main(int argc, char* argv[]) {
                                   cell->ship->halite;
                     }
 
+                    // Try to rush to highly contested areas.
+                    int ed = 1e3;
+                    for (auto player : game.players) {
+                        if (player->id == me->id) continue;
+                        for (auto it : player->ships) {
+                            ed = min(ed, game_map->calculate_distance(
+                                             it.second->position, p));
+                        }
+                    }
+                    if (d <= ed && ed - d <= 5) {
+                        profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
+                    }
+
                     // TODO: Testing rush to new dropoffs.
                     for (auto it : new_dropoffs) {
                         if (it.second + 25 < game.turn_number) continue;
@@ -552,10 +565,6 @@ int main(int argc, char* argv[]) {
 
                         if (uncompressed_cost[j] > min(top_score[i], 5e3)) {
                             cost.push_back(1e9);
-                            continue;
-                        }
-                        if (false && game.players.size() == 4) {
-                            cost.push_back(uncompressed_cost[j]);
                             continue;
                         }
 
