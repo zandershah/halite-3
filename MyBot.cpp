@@ -178,10 +178,12 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
         auto moves =
             game_map->get_moves(ws.p, d, ws.ship_halite, ws.map_halite);
 
-        auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
-            return !safe_to_move(ship, ws.p.doff(d));
-        });
-        moves.erase(rit, moves.end());
+        if (ws.walk.empty() || game.players.size() == 4) {
+            auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
+                return !safe_to_move(ship, ws.p.doff(d));
+            });
+            moves.erase(rit, moves.end());
+        }
         if (moves.empty()) break;
 
         Direction d = moves[rand() % moves.size()];
