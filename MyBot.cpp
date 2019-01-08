@@ -15,9 +15,8 @@ Game game;
 unordered_map<EntityId, Task> tasks;
 
 double HALITE_RETURN;
-const size_t MAX_WALKS = 500;
 
-const double ALPHA = 0.40;
+const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
@@ -62,12 +61,12 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         if (it.second->id == ship->id || tasks[it.second->id] != EXPLORE)
             continue;
         int d = game_map->calculate_distance(p, it.second->position) + 1;
-        ally += pow(1.5, 3 - d);
+        ally += pow(1.5, 4 - d);
     }
     for (auto& it : game.players[cell->ship->owner]->ships) {
         if (it.second->id == cell->ship->id) continue;
         int d = game_map->calculate_distance(p, it.second->position);
-        enemy += pow(1.5, 3 - d);
+        enemy += pow(1.5, 4 - d);
     }
 
     if (game.players.size() == 2) return ally >= enemy;
@@ -203,45 +202,10 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
     return ws;
 }
 
-position_map<double> generate_costs(shared_ptr<Ship> ship) {
-    unique_ptr<GameMap>& game_map = game.game_map;
-    Position p = ship->position;
-
-    position_map<double> surrounding_cost;
-
-    // Default values.
-    for (Position pp : p.get_surrounding_cardinals())
-        surrounding_cost[game_map->normalize(pp)] = 1e5;
-
-    if (p == ship->next) {
-        surrounding_cost[p] = 1;
-        return surrounding_cost;
-    }
-
-    const size_t d = game_map->calculate_distance(ship->position, ship->next);
-
-    // Optimize values with random walks.
-    map<Direction, double> best_walk;
-    double best = 1.0;
-    for (size_t i = 0; i < min(10 * d, MAX_WALKS); ++i) {
-        auto ws = random_walk(ship, ship->next);
-        best_walk[ws.walk.front()] =
-            max(best_walk[ws.walk.front()], ws.evaluate());
-        best = max(best, ws.evaluate());
-    }
-    for (auto& it : best_walk) {
-        Position pp = game_map->normalize(p.doff(it.first));
-        surrounding_cost[pp] = pow(1e3, 1.0 - it.second / best);
-    }
-
-    if (last_moved[ship->id] <= game.turn_number - 5) surrounding_cost[p] = 1e7;
-    return surrounding_cost;
-}
-
 Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    const int close = max(15, game_map->width / 3);
+    const int close = game_map->width / 3;
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
         game_map->calculate_distance(p, game.me->shipyard->position) <= close;
@@ -252,13 +216,13 @@ Halite ideal_dropoff(Position p) {
 
     size_t local_ships = 0;
     for (auto it : game.me->ships) {
-        if (game_map->calculate_distance(it.second->position, p) <= 5)
+        if (game_map->calculate_distance(it.second->position, p) <= 3)
             ++local_ships;
     }
 
     // Approximate number of turns saved mining out.
     Halite halite_around = 0;
-    const int CLOSE_MINE = 5;
+    const int CLOSE_MINE = 3;
     for (int dy = -CLOSE_MINE; dy <= CLOSE_MINE; ++dy) {
         for (int dx = -CLOSE_MINE; dx <= CLOSE_MINE; ++dx) {
             if (abs(dx) + abs(dy) > CLOSE_MINE) continue;
@@ -286,7 +250,7 @@ Halite ideal_dropoff(Position p) {
     ideal &= local_ships >= 3;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() / bases >= 6;
+    ideal &= game.me->ships.size() / bases >= 7;
 
     return ideal * saved;
 }
@@ -335,12 +299,6 @@ int main(int argc, char* argv[]) {
             }
         }
 #endif
-        for (auto player : game.players) {
-            for (auto it : player->dropoffs) {
-                if (!new_dropoffs.count(it.second->position))
-                    new_dropoffs[it.second->position] = game.turn_number;
-            }
-        }
         while (!future_dropoffs.empty()) {
             shared_ptr<Dropoff> future_dropoff = future_dropoffs.front();
             future_dropoffs.pop();
@@ -405,7 +363,7 @@ int main(int argc, char* argv[]) {
                 Position p = ship->position;
                 MapCell* cell = game_map->at(p);
 
-                if (game_map->calculate_distance(p, cell->closest_base) <= 2)
+                if (game_map->calculate_distance(p, cell->closest_base) <= 1)
                     continue;
 
                 cell->mark_unsafe(ship);
@@ -517,23 +475,19 @@ int main(int argc, char* argv[]) {
 
                     Halite profit = cell->halite - dist[p];
 
-                    bool should_inspire = true;
-                    for (auto player : game.players) {
-                        if (player->id == me->id) continue;
-                        for (auto it : player->ships) {
-                            should_inspire &= d <= game_map->calculate_distance(
-                                                       it.second->position, p);
-                        }
-                    }
+                    bool should_inspire =
+                        game.players.size() == 4 || d <= INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (d <= 3 && cell->ship && cell->ship->owner != game.my_id)
+                    if (d <= 3 && cell->ship &&
+                        cell->ship->owner != game.my_id) {
                         profit += (1 + INSPIRED_BONUS_MULTIPLIER) *
                                   cell->ship->halite;
+                    }
 
                     // TODO: Testing rush to new dropoffs.
                     for (auto it : new_dropoffs) {
-                        if (it.second + 50 < game.turn_number) continue;
+                        if (it.second + 25 < game.turn_number) continue;
                         if (game_map->calculate_distance(it.first,
                                                          cell->position) <= 3) {
                             profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
@@ -546,8 +500,7 @@ int main(int argc, char* argv[]) {
 
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
-                    while (pq.size() > max(pow(explorers.size(), 0.75), 10.0))
-                        pq.pop();
+                    while (pq.size() > max(explorers.size(), 25ul)) pq.pop();
                 }
 
                 if (pq.empty()) {
@@ -569,76 +522,79 @@ int main(int argc, char* argv[]) {
                 ++it;
             }
 
-            if (explorers.empty()) goto MOVE_SELECTION;
-
-            // Coordinate compress.
-            vector<Position> target_space;
-            {
-                auto it = targets.begin();
-                for (size_t i = 0; i < targets.size(); ++i, ++it) {
-                    if (is_top_target[i]) target_space.push_back(*it);
-                }
-            }
-
-            log::log("Compressed space:", target_space.size());
-            end = steady_clock::now();
-            log::log("Millis: ",
-                     duration_cast<milliseconds>(end - begin).count());
-
-            vector<vector<double>> cost_matrix;
-            cost_matrix.reserve(explorers.size());
-            for (size_t i = 0; i < explorers.size(); ++i) {
-                const vector<double>& uncompressed_cost =
-                    uncompressed_cost_matrix[i];
-                vector<double> cost;
-                cost.reserve(target_space.size());
-                for (size_t j = 0; j < uncompressed_cost.size(); ++j) {
-                    if (!is_top_target[j]) continue;
-
-                    if (uncompressed_cost[j] > min(top_score[i], 5e3)) {
-                        cost.push_back(1e9);
-                        continue;
-                    }
-                    if (game.players.size() == 4) {
-                        cost.push_back(uncompressed_cost[j]);
-                        continue;
-                    }
-
+            if (!explorers.empty()) {
+                // Coordinate compress.
+                vector<Position> target_space;
+                {
                     auto it = targets.begin();
-                    advance(it, j);
-
-                    double best = 1.0;
-                    for (size_t k = 0; k < 25; ++k) {
-                        auto ws = random_walk(explorers[i], *it);
-                        best = max(best, ws.evaluate());
+                    for (size_t i = 0; i < targets.size(); ++i, ++it) {
+                        if (is_top_target[i]) {
+                            target_space.push_back(*it);
+                            // message(*it, "blue");
+                        }
                     }
-                    cost.push_back(-best + 5e3);
                 }
-                cost_matrix.push_back(move(cost));
+
+                log::log("Compressed space:", target_space.size());
+                end = steady_clock::now();
+                log::log("Millis: ",
+                         duration_cast<milliseconds>(end - begin).count());
+
+                vector<vector<double>> cost_matrix;
+                cost_matrix.reserve(explorers.size());
+                for (size_t i = 0; i < explorers.size(); ++i) {
+                    const vector<double>& uncompressed_cost =
+                        uncompressed_cost_matrix[i];
+                    vector<double> cost;
+                    cost.reserve(target_space.size());
+                    for (size_t j = 0; j < uncompressed_cost.size(); ++j) {
+                        if (!is_top_target[j]) continue;
+
+                        if (uncompressed_cost[j] > min(top_score[i], 5e3)) {
+                            cost.push_back(1e9);
+                            continue;
+                        }
+                        if (false && game.players.size() == 4) {
+                            cost.push_back(uncompressed_cost[j]);
+                            continue;
+                        }
+
+                        auto it = targets.begin();
+                        advance(it, j);
+
+                        double best = 1.0;
+                        for (size_t k = 0; k < 25; ++k) {
+                            auto ws = random_walk(explorers[i], *it);
+                            best = max(best, ws.evaluate());
+                        }
+                        cost.push_back(-best + 5e3);
+                    }
+                    cost_matrix.push_back(move(cost));
+                }
+
+                end = steady_clock::now();
+                log::log("Millis: ",
+                         duration_cast<milliseconds>(end - begin).count());
+
+                vector<int> assignment(explorers.size());
+                HungarianAlgorithm ha;
+                ha.Solve(cost_matrix, assignment);
+
+                end = steady_clock::now();
+                log::log("Millis: ",
+                         duration_cast<milliseconds>(end - begin).count());
+
+                for (size_t i = 0; i < explorers.size(); ++i) {
+                    explorers[i]->next = target_space[assignment[i]];
+                    // message(explorers[i]->next, "green");
+                }
             }
 
             end = steady_clock::now();
             log::log("Millis: ",
                      duration_cast<milliseconds>(end - begin).count());
-
-            vector<int> assignment(explorers.size());
-            HungarianAlgorithm ha;
-            ha.Solve(cost_matrix, assignment);
-
-            end = steady_clock::now();
-            log::log("Millis: ",
-                     duration_cast<milliseconds>(end - begin).count());
-
-            for (size_t i = 0; i < explorers.size(); ++i) {
-                explorers[i]->next = target_space[assignment[i]];
-                message(explorers[i]->next, "green");
-            }
         }
 
-        end = steady_clock::now();
-        log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
-
-    MOVE_SELECTION:
         log::log("Move cost matrix.");
         if (!explorers.empty() || !returners.empty()) {
             explorers.insert(explorers.end(), returners.begin(),
@@ -665,16 +621,52 @@ int main(int argc, char* argv[]) {
             cost_matrix.reserve(explorers.size());
             for (auto ship : explorers) {
                 vector<double> cost(move_space.size(), 1e9);
+                cost_matrix.push_back(move(cost));
+            }
 
-                position_map<double> surrounding_cost = generate_costs(ship);
-                for (auto& it : surrounding_cost) {
-                    if (safe_to_move(ship, it.first))
-                        cost[move_indices[it.first]] = it.second;
-                    else if (game_map->at(it.first)->ship->owner != me->id)
-                        cost[move_indices[it.first]] = 1e7;
+            // Random walk to generate costs.
+            vector<map<Direction, double>> best_walks(explorers.size());
+            bool timeout = false;
+            while (!timeout) {
+                for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
+                    end = steady_clock::now();
+                    if (duration_cast<milliseconds>(end - begin).count() > 1500)
+                        timeout = true;
+                    auto ws = random_walk(explorers[i], explorers[i]->next);
+                    best_walks[i][ws.walk.front()] =
+                        max(best_walks[i][ws.walk.front()], ws.evaluate());
+                }
+            }
+
+            for (size_t i = 0; i < explorers.size(); ++i) {
+                Position p = explorers[i]->position;
+
+                position_map<double> surrounding_cost;
+
+                // Default values.
+                for (Position pp : p.get_surrounding_cardinals())
+                    surrounding_cost[game_map->normalize(pp)] = 1e5;
+
+                if (p == explorers[i]->next) {
+                    surrounding_cost[p] = 1;
+                } else {
+                    double best = 1.0;
+                    for (auto& it : best_walks[i]) best = max(best, it.second);
+                    for (auto& it : best_walks[i]) {
+                        Position pp = game_map->normalize(p.doff(it.first));
+                        surrounding_cost[pp] = pow(1e3, 1.0 - it.second / best);
+                    }
+
+                    if (last_moved[explorers[i]->id] <= game.turn_number - 5)
+                        surrounding_cost[p] = 1e7;
                 }
 
-                cost_matrix.push_back(move(cost));
+                for (auto& it : surrounding_cost) {
+                    if (safe_to_move(explorers[i], it.first))
+                        cost_matrix[i][move_indices[it.first]] = it.second;
+                    else if (game_map->at(it.first)->ship->owner != me->id)
+                        cost_matrix[i][move_indices[it.first]] = 1e7;
+                }
             }
 
             // Solve and execute moves.
@@ -700,6 +692,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
+#if 1
         for (auto ship : explorers) {
             Halite ideal = ideal_dropoff(ship->next);
             Halite delta = DROPOFF_COST - game_map->at(ship->next)->halite;
@@ -712,6 +705,7 @@ int main(int argc, char* argv[]) {
                 wanted = max(wanted, delta);
             }
         }
+#endif
 
         end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
@@ -726,16 +720,17 @@ int main(int argc, char* argv[]) {
             ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
         }
         should_spawn_ewma =
-            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 75;
+            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 50;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
-        size_t ship_lo = 0;
+        size_t ship_lo = 0, ship_hi = 1e3;
         if (!started_hard_return) {
-            ship_lo = 1e3;
+            swap(ship_lo, ship_hi);
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
                 ship_lo = min(ship_lo, player->ships.size());
+                ship_hi = max(ship_hi, player->ships.size());
             }
         }
 
@@ -744,6 +739,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
+        should_spawn &= me->ships.size() < ship_hi + 5;
         should_spawn &= halite_percentage >= 0.1;
 
 #if 0
