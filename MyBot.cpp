@@ -187,7 +187,6 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
 
         if (tasks[ship->id] == EXPLORE && ws.ship_halite > HALITE_RETURN) break;
     }
-
     if (game.turn_number + turns > MAX_TURNS) ws.ship_halite = 0;
 
     // Final mine.
@@ -486,21 +485,23 @@ int main(int argc, char* argv[]) {
                     }
 
                     // Try to rush to highly contested areas.
-                    int ed = 1e3;
-                    for (auto player : game.players) {
-                        if (player->id == me->id) continue;
-                        for (auto it : player->ships) {
-                            ed = min(ed, game_map->calculate_distance(
-                                             it.second->position, p));
+                    if (game.players.size() == 4) {
+                        int ed = 1e3;
+                        for (auto player : game.players) {
+                            if (player->id == me->id) continue;
+                            for (auto it : player->ships) {
+                                ed = min(ed, game_map->calculate_distance(
+                                                 it.second->position, p));
+                            }
                         }
-                    }
-                    if (d <= ed && ed - d <= 5) {
-                        profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
+                        if (d <= ed && ed - d <= 3) {
+                            profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
+                        }
                     }
 
                     // TODO: Testing rush to new dropoffs.
                     for (auto it : new_dropoffs) {
-                        if (it.second + 25 < game.turn_number) continue;
+                        if (it.second + 50 < game.turn_number) continue;
                         if (game_map->calculate_distance(it.first,
                                                          cell->position) <= 3) {
                             profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
@@ -513,8 +514,7 @@ int main(int argc, char* argv[]) {
 
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
-                    while (pq.size() > max(explorers.size() / 2, 25ul))
-                        pq.pop();
+                    while (pq.size() > max(explorers.size(), 25ul)) pq.pop();
                 }
 
                 if (pq.empty()) {
@@ -573,7 +573,10 @@ int main(int argc, char* argv[]) {
                         advance(it, j);
 
                         double best = 1.0;
-                        for (size_t k = 0; k < 25; ++k) {
+                        size_t K = 15;
+                        if (game_map->width <= 48 || me->ships.size() <= 50)
+                            K = 25;
+                        for (size_t k = 0; k < K; ++k) {
                             auto ws = random_walk(explorers[i], *it);
                             best = max(best, ws.evaluate());
                         }
