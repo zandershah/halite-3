@@ -45,6 +45,8 @@ inline bool hard_stuck(shared_ptr<Ship> ship) {
     return ship->halite < left / MOVE_COST_RATIO;
 }
 
+position_map<int> safe_cache;
+
 bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
@@ -56,21 +58,25 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     if (tasks[ship->id] == HARD_RETURN) return true;
 
     // Estimate who is closer.
-    int ally = 0, enemy = 0;
-    for (auto& it : game.me->ships) {
-        if (it.second->id == ship->id || tasks[it.second->id] != EXPLORE)
-            continue;
-        int d = game_map->calculate_distance(p, it.second->position) + 1;
-        ally += pow(1.5, 4 - d);
+    if (!safe_cache.count(p)) {
+        int closeness = 0;
+        for (auto& it : game.me->ships) {
+            if (tasks[it.second->id] != EXPLORE) continue;
+            int d = game_map->calculate_distance(p, it.second->position) + 1;
+            closeness += pow(1.5, 4 - d);
+        }
+        for (auto& it : game.players[cell->ship->owner]->ships) {
+            if (it.second->id == cell->ship->id) continue;
+            int d = game_map->calculate_distance(p, it.second->position);
+            closeness -= pow(1.5, 4 - d);
+        }
+        safe_cache[p] = closeness;
     }
-    for (auto& it : game.players[cell->ship->owner]->ships) {
-        if (it.second->id == cell->ship->id) continue;
-        int d = game_map->calculate_distance(p, it.second->position);
-        enemy += pow(1.5, 4 - d);
-    }
+    const int d = game_map->calculate_distance(p, ship->position);
+    int closeness = safe_cache[p] - pow(1.5, 3 - d);
 
-    if (game.players.size() == 2) return ally >= enemy;
-    return ally >= enemy + 5 &&
+    if (game.players.size() == 2) return closeness >= 0;
+    return closeness >= 5 &&
            ship->halite + cell->ship->halite + cell->halite >= MAX_HALITE * 0.5;
 }
 
@@ -172,12 +178,10 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
         auto moves =
             game_map->get_moves(ws.p, d, ws.ship_halite, ws.map_halite);
 
-        if (ws.walk.empty()) {
-            auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
-                return !safe_to_move(ship, ws.p.doff(d));
-            });
-            moves.erase(rit, moves.end());
-        }
+        auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
+            return !safe_to_move(ship, ws.p.doff(d));
+        });
+        moves.erase(rit, moves.end());
         if (moves.empty()) break;
 
         Direction d = moves[rand() % moves.size()];
@@ -249,7 +253,7 @@ Halite ideal_dropoff(Position p) {
     ideal &= local_ships >= 3;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() / bases >= 7;
+    ideal &= game.me->ships.size() / bases >= 6;
 
     return ideal * saved;
 }
@@ -270,6 +274,8 @@ int main(int argc, char* argv[]) {
         shared_ptr<Player> me = game.me;
         unique_ptr<GameMap>& game_map = game.game_map;
         auto begin = steady_clock::now();
+
+        safe_cache.clear();
 
         vector<Command> command_queue;
 
@@ -494,14 +500,14 @@ int main(int argc, char* argv[]) {
                                                  it.second->position, p));
                             }
                         }
-                        if (d <= ed && ed - d <= 3) {
+                        if (ed - d == 1 || ed - d == 2) {
                             profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                         }
                     }
 
                     // TODO: Testing rush to new dropoffs.
                     for (auto it : new_dropoffs) {
-                        if (it.second + 50 < game.turn_number) continue;
+                        if (it.second + 25 < game.turn_number) continue;
                         if (game_map->calculate_distance(it.first,
                                                          cell->position) <= 3) {
                             profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
@@ -514,7 +520,7 @@ int main(int argc, char* argv[]) {
 
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
-                    while (pq.size() > max(explorers.size(), 25ul)) pq.pop();
+                    while (pq.size() > 25ul) pq.pop();
                 }
 
                 if (pq.empty()) {
@@ -573,10 +579,7 @@ int main(int argc, char* argv[]) {
                         advance(it, j);
 
                         double best = 1.0;
-                        size_t K = 15;
-                        if (game_map->width <= 48 || me->ships.size() <= 50)
-                            K = 25;
-                        for (size_t k = 0; k < K; ++k) {
+                        for (size_t k = 0; k < 25ul; ++k) {
                             auto ws = random_walk(explorers[i], *it);
                             best = max(best, ws.evaluate());
                         }
