@@ -51,9 +51,10 @@ position_map<int> safe_cache;
 
 bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
-
     MapCell* cell = game_map->at(p);
+
     if (!cell->is_occupied()) return true;
+
     if (ship->owner == cell->ship->owner) return false;
     if (cell->has_structure() && cell->structure->owner != ship->owner)
         return false;
@@ -74,12 +75,15 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         }
         safe_cache[p] = closeness;
     }
+
     const int d = game_map->calculate_distance(p, ship->position);
-    int closeness = safe_cache[p] - pow(1.5, 3 - d);
+    const int closeness = safe_cache[p] - pow(1.5, 3 - d);
 
     if (game.players.size() == 2) return closeness >= 0;
-    return closeness >= 5 &&
-           ship->halite + cell->ship->halite + cell->halite >= MAX_HALITE * 0.5;
+
+    Halite dropped = ship->halite + cell->ship->halite + cell->halite;
+    if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
+    return closeness >= 5 && dropped >= SHIP_COST;
 }
 
 void bfs(position_map<Halite>& dist, Position source) {
@@ -186,6 +190,12 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
             });
             moves.erase(rit, moves.end());
         }
+        if (moves.empty()) {
+            // We try to add all moves.
+            for (Direction d : ALL_CARDINALS) {
+                if (safe_to_move(ship, ws.p.doff(d))) moves.push_back(d);
+            }
+        }
         if (moves.empty()) break;
 
         Direction d = moves[rand() % moves.size()];
@@ -229,10 +239,9 @@ Halite ideal_dropoff(Position p) {
 
     // Approximate number of turns saved mining out.
     Halite halite_around = 0;
-    const int CLOSE_MINE = 3;
-    for (int dy = -CLOSE_MINE; dy <= CLOSE_MINE; ++dy) {
-        for (int dx = -CLOSE_MINE; dx <= CLOSE_MINE; ++dx) {
-            if (abs(dx) + abs(dy) > CLOSE_MINE) continue;
+    for (int dy = -3; dy <= 3; ++dy) {
+        for (int dx = -3; dx <= 3; ++dx) {
+            if (abs(dx) + abs(dy) > 3) continue;
             Position pd(p.x + dx, p.y + dy);
             halite_around += game_map->at(pd)->halite;
         }
@@ -280,7 +289,7 @@ int main(int argc, char* argv[]) {
         auto begin = steady_clock::now();
 
         safe_cache.clear();
-        if (me->ships.size() >= 75 && game_map->width >= 56) PADDING = 15;
+        if (me->ships.size() >= 75 && game_map->width >= 56) PADDING = 10;
 
         vector<Command> command_queue;
 
@@ -325,13 +334,13 @@ int main(int argc, char* argv[]) {
         log::log("Inspiration. Closest base.");
         position_map<int> close_enemies;
         for (auto& player : game.players) {
+            const int IR = INSPIRATION_RADIUS;
             if (player->id == game.my_id) continue;
-            const int CLOSE = INSPIRATION_RADIUS;
             for (auto& it : player->ships) {
                 Position p = it.second->position;
-                for (int dx = -CLOSE; dx <= CLOSE; ++dx) {
-                    for (int dy = -CLOSE; dy <= CLOSE; ++dy) {
-                        if (abs(dx) + abs(dy) > CLOSE) continue;
+                for (int dx = -IR; dx <= IR; ++dx) {
+                    for (int dy = -IR; dy <= IR; ++dy) {
+                        if (abs(dx) + abs(dy) > IR) continue;
                         ++close_enemies[game_map->normalize(
                             Position(p.x + dx, p.y + dy))];
                     }
@@ -372,9 +381,6 @@ int main(int argc, char* argv[]) {
                 auto ship = it.second;
                 Position p = ship->position;
                 MapCell* cell = game_map->at(p);
-
-                if (game_map->calculate_distance(p, cell->closest_base) <= 1)
-                    continue;
 
                 cell->mark_unsafe(ship);
                 if (hard_stuck(ship)) continue;
@@ -431,9 +437,8 @@ int main(int argc, char* argv[]) {
             // Hard return.
             if (tasks[id] == HARD_RETURN && closest_base_dist <= 1) {
                 for (Direction d : ALL_CARDINALS) {
-                    if (ship->position.doff(d) == cell->closest_base) {
+                    if (ship->position.doff(d) == cell->closest_base)
                         command_queue.push_back(ship->move(d));
-                    }
                 }
                 continue;
             }
@@ -445,8 +450,7 @@ int main(int argc, char* argv[]) {
                 case HARD_RETURN:
                     if (ship->position == cell->closest_base) break;
                 case RETURN:
-                    if (ship->next == ship->position)
-                        ship->next = cell->closest_base;
+                    ship->next = cell->closest_base;
                     returners.push_back(ship);
             }
         }
@@ -521,7 +525,7 @@ int main(int argc, char* argv[]) {
                     }
 
                     if (!safe_to_move(ship, p)) profit = 0;
-                    double rate = profit / max(1.0, d + dd);
+                    double rate = profit / (1.0 + d + dd);
 
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
@@ -650,9 +654,15 @@ int main(int argc, char* argv[]) {
             bool timeout = false;
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
+#if 1
                     end = steady_clock::now();
-                    if (duration_cast<milliseconds>(end - begin).count() > 1500)
+                    if (duration_cast<milliseconds>(end - begin).count() > 1750)
                         timeout = true;
+#else
+                    if (duration_cast<milliseconds>(steady_clock::now() - end)
+                            .count() > 300)
+                        timeout = true;
+#endif
                     auto ws = random_walk(explorers[i], explorers[i]->next);
                     best_walks[i][ws.walk.front()] =
                         max(best_walks[i][ws.walk.front()], ws.evaluate());
