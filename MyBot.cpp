@@ -64,7 +64,6 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     if (!safe_cache.count(p)) {
         int closeness = 0;
         for (auto& it : game.me->ships) {
-            if (tasks[it.second->id] != EXPLORE) continue;
             int d = game_map->calculate_distance(p, it.second->position) + 1;
             closeness += pow(1.5, 4 - d);
         }
@@ -500,18 +499,16 @@ int main(int argc, char* argv[]) {
                     }
 
                     // Try to rush to highly contested areas.
-                    if (game.players.size() == 4) {
-                        int ed = 1e3;
-                        for (auto player : game.players) {
-                            if (player->id == me->id) continue;
-                            for (auto it : player->ships) {
-                                ed = min(ed, game_map->calculate_distance(
-                                                 it.second->position, p));
-                            }
+                    int ed = 1e3;
+                    for (auto player : game.players) {
+                        if (player->id == me->id) continue;
+                        for (auto it : player->ships) {
+                            ed = min(ed, game_map->calculate_distance(
+                                             it.second->position, p));
                         }
-                        if (ed - d == 1 || ed - d == 2) {
-                            profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                        }
+                    }
+                    if (ed - d == 1 || ed - d == 2) {
+                        profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     }
 
                     // TODO: Testing rush to new dropoffs.
@@ -654,13 +651,13 @@ int main(int argc, char* argv[]) {
             bool timeout = false;
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
-#if 1
+#if 0
                     end = steady_clock::now();
                     if (duration_cast<milliseconds>(end - begin).count() > 1750)
                         timeout = true;
 #else
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 300)
+                            .count() > 150)
                         timeout = true;
 #endif
                     auto ws = random_walk(explorers[i], explorers[i]->next);
