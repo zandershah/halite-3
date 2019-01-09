@@ -64,13 +64,13 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     if (!safe_cache.count(p)) {
         int closeness = 0;
         for (auto& it : game.me->ships) {
-            int d = game_map->calculate_distance(p, it.second->position) + 1;
-            closeness += pow(1.5, 4 - d);
+            int d = game_map->calculate_distance(p, it.second->position);
+            closeness += pow(1.25, 4 - d);
         }
         for (auto& it : game.players[cell->ship->owner]->ships) {
             if (it.second->id == cell->ship->id) continue;
             int d = game_map->calculate_distance(p, it.second->position);
-            closeness -= pow(1.5, 4 - d);
+            closeness -= pow(1.25, 4 - d);
         }
         safe_cache[p] = closeness;
     }
@@ -771,7 +771,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= halite_percentage >= 0.1;
 
 #if 0
-        should_spawn &= me->ships.empty();
+        should_spawn &= me->ships.size() <= 0;
 #endif
 
         if (should_spawn) {
