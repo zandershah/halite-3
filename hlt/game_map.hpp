@@ -24,7 +24,7 @@ struct GameMap {
         return at(entity->position);
     }
 
-    int calculate_distance(const Position& source, const Position& target) {
+    int calc_dist(const Position& source, const Position& target) {
         const auto& normalized_source = normalize(source);
         const auto& normalized_target = normalize(target);
 
