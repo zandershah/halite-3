@@ -202,6 +202,7 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
 
         if (tasks[ship->id] == EXPLORE && ws.ship_halite > HALITE_RETURN) break;
     }
+
     if (game.turn_number + turns > MAX_TURNS) ws.ship_halite = 0;
 
     // Final mine.
@@ -399,15 +400,21 @@ int main(int argc, char* argv[]) {
             // New ship.
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
-            // Return estimate if forced.
-            const int forced_return_turn =
-                game.turn_number + closest_base_dist +
-                game_map->at(cell->closest_base)->close_ships * 0.3;
-            // TODO: Dry run of return.
-            if (all_empty || forced_return_turn > MAX_TURNS) {
-                tasks[id] = HARD_RETURN;
-                started_hard_return = true;
+            // Return if game will end soon.
+            const Task task_holder = tasks[id];
+            tasks[id] = HARD_RETURN;
+
+            double return_turn = MAX_TURNS;
+            for (size_t i = 0; i < 10; ++i) {
+                auto ws = random_walk(ship, cell->closest_base);
+                return_turn = min(return_turn, ws.turns);
             }
+            return_turn += game.turn_number + cell->close_ships / 4;
+
+            if (all_empty || return_turn + 5 > MAX_TURNS)
+                started_hard_return = true;
+            else
+                tasks[id] = task_holder;
 
             switch (tasks[id]) {
                 case EXPLORE:
@@ -493,6 +500,7 @@ int main(int argc, char* argv[]) {
                         profit += (INSPIRED_BONUS_MULTIPLIER + 1) *
                                   cell->ship->halite;
                     }
+                    profit = min(profit, MAX_HALITE - ship->halite);
 
                     if (!safe_to_move(ship, p)) profit = 0;
                     double rate = profit / (1.0 + d + dd);
@@ -548,21 +556,7 @@ int main(int argc, char* argv[]) {
                     cost.reserve(target_space.size());
                     for (size_t j = 0; j < uncompressed_cost.size(); ++j) {
                         if (!is_top_target[j]) continue;
-
-                        if (uncompressed_cost[j] > min(top_score[i], 5e3)) {
-                            cost.push_back(1e9);
-                            continue;
-                        }
-
-                        auto it = targets.begin();
-                        advance(it, j);
-
-                        double best = 1.0;
-                        for (size_t k = 0; k < PADDING; ++k) {
-                            auto ws = random_walk(explorers[i], *it);
-                            best = max(best, ws.evaluate());
-                        }
-                        cost.push_back(-best + 5e3);
+                        cost.push_back(uncompressed_cost[j]);
                     }
                     cost_matrix.push_back(move(cost));
                 }
@@ -625,7 +619,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 500) {
+                            .count() > 50) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
