@@ -136,7 +136,6 @@ struct WalkState {
     double turns = 1;
     vector<Direction> walk;
 
-    // TODO: Prioritize early halite.
     void mine() {
         Halite mined = extracted(map_halite);
         mined = min(mined, MAX_HALITE - ship_halite);
@@ -350,7 +349,7 @@ int main(int argc, char* argv[]) {
                 Position p = cell.position;
 
                 cell.inspired = close_enemies[p] >= INSPIRATION_SHIP_COUNT;
-                cell.close_ships = 0;
+                cell.close_ships.clear();
                 cell.closest_base = me->shipyard->position;
                 for (auto& it : me->dropoffs) {
                     if (game_map->calc_dist(p, it.second->position) <
@@ -366,8 +365,17 @@ int main(int argc, char* argv[]) {
         }
         halite_percentage = current_halite * 1.0 / total_halite;
 
-        for (auto& it : me->ships)
-            ++game_map->at(game_map->at(it.second)->closest_base)->close_ships;
+        for (auto& it : me->ships) {
+            MapCell* cell = game_map->at(it.second);
+            auto moves = game_map->get_moves(cell->position, cell->closest_base,
+                                             it.second->halite, 0);
+            if (moves.empty()) continue;
+
+            Direction od = moves.front();
+            for (Direction d : moves)
+                if (cell->close_ships[d] < cell->close_ships[od]) od = d;
+            ++cell->close_ships[od];
+        }
 
         for (auto& player : game.players) {
             if (player->id == me->id) continue;
@@ -386,6 +394,40 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Hard return.
+        for (auto& it : me->ships) {
+            shared_ptr<Ship> ship = it.second;
+            const EntityId id = ship->id;
+
+            MapCell* cell = game_map->at(ship);
+
+            if (!tasks.count(id)) continue;
+
+            double return_turn = MAX_TURNS;
+
+            const Task task_holder = tasks[id];
+            tasks[id] = HARD_RETURN;
+            for (size_t i = 0; i < 10; ++i) {
+                auto ws = random_walk(it.second, cell->closest_base);
+                return_turn = min(return_turn, ws.turns);
+            }
+            tasks[id] = task_holder;
+
+            return_turn += game.turn_number;
+
+            auto moves = game_map->get_moves(cell->position, cell->closest_base,
+                                             it.second->halite, 0);
+            if (moves.empty()) continue;
+
+            Direction od = moves.front();
+            for (Direction d : moves)
+                if (cell->close_ships[d] < cell->close_ships[od]) od = d;
+            return_turn += cell->close_ships[od];
+
+            if (all_empty || return_turn >= MAX_TURNS)
+                started_hard_return = true;
+        }
+
         log::log("Tasks.");
         vector<shared_ptr<Ship>> returners, explorers;
         for (auto& it : me->ships) {
@@ -401,20 +443,7 @@ int main(int argc, char* argv[]) {
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
             // Return if game will end soon.
-            const Task task_holder = tasks[id];
-            tasks[id] = HARD_RETURN;
-
-            double return_turn = MAX_TURNS;
-            for (size_t i = 0; i < 10; ++i) {
-                auto ws = random_walk(ship, cell->closest_base);
-                return_turn = min(return_turn, ws.turns);
-            }
-            return_turn += game.turn_number + cell->close_ships / 4;
-
-            if (all_empty || return_turn + 5 > MAX_TURNS)
-                started_hard_return = true;
-            else
-                tasks[id] = task_holder;
+            if (started_hard_return) tasks[id] = HARD_RETURN;
 
             switch (tasks[id]) {
                 case EXPLORE:
@@ -614,7 +643,8 @@ int main(int argc, char* argv[]) {
             }
 
             // Random walk to generate costs.
-            vector<map<Direction, double>> best_walks(explorers.size());
+            vector<unordered_map<Direction, double>> best_walks(
+                explorers.size());
             bool timeout = false;
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
