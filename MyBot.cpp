@@ -32,7 +32,7 @@ inline Halite extracted(Halite h) {
     return (h + EXTRACT_RATIO - 1) / EXTRACT_RATIO;
 }
 
-queue<shared_ptr<Dropoff>> future_dropoffs;
+shared_ptr<Dropoff> future_dropoff;
 
 // Fluorine JSON.
 stringstream flog;
@@ -219,36 +219,40 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
 Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    const int close = game_map->width / 3;
-    bool local_dropoffs = game_map->at(p)->has_structure();
-    local_dropoffs |=
-        game_map->calc_dist(p, game.me->shipyard->position) <= close;
-    for (auto& it : game.me->dropoffs) {
-        local_dropoffs |= game_map->calc_dist(p, it.second->position) <= close;
-    }
+    const int close = max(15, game_map->width / 3);
 
-    Halite halite_around = 0;
-    for (int dy = -3; dy <= 3; ++dy) {
-        for (int dx = -3; dx <= 3; ++dx) {
-            if (abs(dx) + abs(dy) > 3) continue;
-            Position pd(p.x + dx, p.y + dy);
-            halite_around += game_map->at(pd)->halite;
+    bool local_dropoffs = false;
+    for (auto player : game.players) {
+        local_dropoffs |=
+            game_map->calc_dist(p, player->shipyard->position) <= close;
+        for (auto& it : player->dropoffs) {
+            local_dropoffs |=
+                game_map->calc_dist(p, it.second->position) <= close;
         }
     }
 
-    Halite saved = halite_around * ewma / MAX_HALITE *
-                   game_map->calc_dist(p, game_map->at(p)->closest_base);
+    Halite halite_around = 0;
+    double s = 0;
+    for (int dy = -5; dy <= 5; ++dy) {
+        for (int dx = -5; dx <= 5; ++dx) {
+            if (abs(dx) + abs(dy) > 5) continue;
+            Position pd(p.x + dx, p.y + dy);
 
-    // Approximate saved by returing.
-    for (auto& it : game.me->ships) {
-        auto ship = it.second;
-        int d = game_map->calc_dist(ship->position,
-                                    game_map->at(ship)->closest_base);
-        int dd = game_map->calc_dist(ship->position, p);
-        saved += max(0, d - dd) * ewma;
+            ++s;
+
+            bool local_enemy = game_map->at(pd)->ship &&
+                               game_map->at(pd)->ship->owner != game.my_id;
+            for (Position ppd : pd.get_surrounding_cardinals())
+                local_enemy |= game_map->at(ppd)->ship &&
+                               game_map->at(ppd)->ship->owner != game.my_id;
+            if (!local_enemy) halite_around += game_map->at(pd)->halite;
+        }
     }
 
+    Halite saved = halite_around;
+
     bool ideal = saved >= DROPOFF_COST - game_map->at(p)->halite;
+    ideal &= halite_around / s >= MAX_HALITE * 0.175;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 50;
     ideal &= !started_hard_return;
@@ -271,6 +275,8 @@ int main(int argc, char* argv[]) {
 
     unordered_map<EntityId, Halite> last_halite;
 
+    Halite wanted = 0;
+
     for (;;) {
         game.update_frame();
         shared_ptr<Player> me = game.me;
@@ -284,7 +290,6 @@ int main(int argc, char* argv[]) {
         vector<Command> command_queue;
 
         log::log("Dropoffs.");
-        Halite wanted = 0;
 #if 1
         for (auto it = me->ships.begin(); it != me->ships.end();) {
             auto ship = it->second;
@@ -293,19 +298,13 @@ int main(int argc, char* argv[]) {
             const Halite delta =
                 DROPOFF_COST - game_map->at(ship)->halite - ship->halite;
 
-            size_t local_ships = 0;
-            for (auto it : game.me->ships) {
-                int d =
-                    game_map->calc_dist(it.second->position, ship->position);
-                local_ships += d <= 3;
-            }
-
-            if (ideal && local_ships >= 3 && delta <= me->halite) {
+            if (ideal && delta <= me->halite) {
                 me->halite -= max(0, delta);
                 command_queue.push_back(ship->make_dropoff());
                 me->dropoffs[-ship->id] = make_shared<Dropoff>(
                     game.my_id, -ship->id, ship->position.x, ship->position.y);
                 log::log("Dropoff created at", ship->position);
+                wanted = 0;
 
                 me->ships.erase(it++);
             } else {
@@ -313,13 +312,11 @@ int main(int argc, char* argv[]) {
             }
         }
 #endif
-        while (!future_dropoffs.empty()) {
-            shared_ptr<Dropoff> future_dropoff = future_dropoffs.front();
-            future_dropoffs.pop();
-
-            if (!me->dropoffs.count(future_dropoff->id))
-                me->dropoffs[future_dropoff->id] = future_dropoff;
-        }
+        if (future_dropoff && !ideal_dropoff(future_dropoff->position))
+            future_dropoff = nullptr;
+        if (future_dropoff && !me->dropoffs.count(future_dropoff->id))
+            me->dropoffs[future_dropoff->id] = future_dropoff;
+        if (!future_dropoff) wanted = 0;
 
         auto end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
@@ -717,20 +714,33 @@ int main(int argc, char* argv[]) {
             }
         }
 
-#if 1
-        for (auto ship : explorers) {
-            Halite ideal = ideal_dropoff(ship->next);
-            Halite delta = DROPOFF_COST - game_map->at(ship->next)->halite;
-            if (ideal) {
-                if (delta <= me->halite) {
-                    log::log("Waiting on", ship->next, delta, me->halite);
-                    future_dropoffs.push(make_shared<Dropoff>(
-                        game.my_id, -ship->id, ship->next.x, ship->next.y));
-                }
-                wanted = wanted ? min(wanted, delta) : delta;
+        vector<pair<Position, double>> futures;
+        for (Position p : targets) {
+            Halite ideal = ideal_dropoff(p);
+            if (!ideal) continue;
+
+            double d = 1;
+            for (auto it : me->ships)
+                d += pow(game_map->calc_dist(p, it.second->position), 2);
+            d /= me->ships.size();
+
+            futures.emplace_back(p, ideal / d);
+        }
+        sort(futures.begin(), futures.end(),
+             [&](pair<Position, double> u, pair<Position, double> v) {
+                 return u.second > v.second;
+             });
+        if (!futures.empty() && !future_dropoff) {
+            wanted = DROPOFF_COST -
+                     game_map->at(futures.front().first)->halite -
+                     HALITE_RETURN;
+            if (wanted <= me->halite) {
+                // message(futures.front().first, "green");
+                future_dropoff = make_shared<Dropoff>(game.my_id, -2,
+                                                      futures.front().first.x,
+                                                      futures.front().first.y);
             }
         }
-#endif
 
         end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
@@ -744,8 +754,7 @@ int main(int argc, char* argv[]) {
             }
             ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
         }
-        should_spawn_ewma =
-            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 50;
+        should_spawn_ewma = game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
