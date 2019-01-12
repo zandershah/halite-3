@@ -64,20 +64,18 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         for (auto& it : game.me->ships) {
             if (tasks[it.second->id] != EXPLORE) continue;
             int d = game_map->calc_dist(p, it.second->position) + 1;
-            closeness += pow(1.25, 3 - d);
+            closeness += pow(2, 3 - d);
         }
         for (auto& it : game.players[cell->ship->owner]->ships) {
             if (it.second->id == cell->ship->id) continue;
             int d = game_map->calc_dist(p, it.second->position);
-            closeness -= pow(1.25, 3 - d);
+            closeness -= pow(2, 3 - d);
         }
         safe_to_move_cache[p] = closeness;
     }
 
     const int d = game_map->calc_dist(p, ship->position);
-    const int closeness = safe_to_move_cache[p] - pow(1.25, 2 - d);
-
-    if (game.players.size() == 2) return closeness >= 0;
+    const int closeness = safe_to_move_cache[p] - pow(2, 2 - d);
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
@@ -245,7 +243,7 @@ Halite ideal_dropoff(Position p) {
                 ideal_dropoff_cache[pd] = ally - enemy;
             }
 
-            if (ideal_dropoff_cache[pd] <= 0)
+            if (ideal_dropoff_cache[pd] <= 1)
                 halite_around += game_map->at(pd)->halite;
         }
     }
@@ -253,14 +251,13 @@ Halite ideal_dropoff(Position p) {
     Halite saved = halite_around;
 
     bool ideal = saved >= DROPOFF_COST - game_map->at(p)->halite;
-    ideal &= halite_around / s >= MAX_HALITE * 0.15;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 50;
     ideal &= !started_hard_return;
     // ideal &= local_ships >= 3;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() / bases >= 5;
+    ideal &= game.me->ships.size() / bases >= 7;
 
     return ideal * saved;
 }
@@ -521,9 +518,8 @@ int main(int argc, char* argv[]) {
 
                     Halite profit = cell->halite - dist[p];
 
-                    // bool should_inspire = game.players.size() == 4 || d <=
-                    // INSPIRATION_RADIUS;
-                    bool should_inspire = d <= 2 * INSPIRATION_RADIUS;
+                    bool should_inspire =
+                        game.players.size() == 4 || d <= INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     if (d <= 1 && cell->ship &&
@@ -533,7 +529,7 @@ int main(int argc, char* argv[]) {
                                   cell->ship->halite;
                     }
                     if (future_dropoff &&
-                        game_map->calc_dist(future_dropoff->position, p) <= 5) {
+                        game_map->calc_dist(future_dropoff->position, p) <= 3) {
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     }
                     profit = min(profit, MAX_HALITE - ship->halite);
@@ -656,7 +652,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 50) {
+                            .count() > 75) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -784,7 +780,7 @@ int main(int argc, char* argv[]) {
         should_spawn &= !started_hard_return;
 
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
-        should_spawn &= me->ships.size() < ship_hi + 5;
+        should_spawn &= me->ships.size() < ship_hi + 3;
         should_spawn &= halite_percentage >= 0.1;
 
 #if 0
