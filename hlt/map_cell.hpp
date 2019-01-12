@@ -11,6 +11,7 @@ struct MapCell {
     Position position;
     Halite halite;
     std::shared_ptr<Ship> ship;
+    std::shared_ptr<Ship> closest_ship;
     // Only has dropoffs and shipyards. If id is -1,
     // then it's a shipyard, otherwise it's a dropoff.
     std::shared_ptr<Entity> structure;
