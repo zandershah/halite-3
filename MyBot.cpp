@@ -407,13 +407,11 @@ int main(int argc, char* argv[]) {
 
             const Task task_holder = tasks[id];
             tasks[id] = HARD_RETURN;
-            for (size_t i = 0; i < 10; ++i) {
+            for (size_t i = 0; i < 50; ++i) {
                 auto ws = random_walk(it.second, cell->closest_base);
                 return_turn = min(return_turn, ws.turns);
             }
             tasks[id] = task_holder;
-
-            return_turn += game.turn_number;
 
             auto moves = game_map->get_moves(cell->position, cell->closest_base,
                                              it.second->halite, 0);
@@ -422,10 +420,13 @@ int main(int argc, char* argv[]) {
             Direction od = moves.front();
             for (Direction d : moves)
                 if (cell->close_ships[d] < cell->close_ships[od]) od = d;
-            return_turn += cell->close_ships[od];
+            return_turn = max(return_turn, 1.0 * cell->close_ships[od]);
 
-            if (all_empty || return_turn >= MAX_TURNS)
+            return_turn += game.turn_number;
+            if (all_empty || return_turn > MAX_TURNS) {
+                tasks[id] = HARD_RETURN;
                 started_hard_return = true;
+            }
         }
 
         log::log("Tasks.");
@@ -763,7 +764,8 @@ int main(int argc, char* argv[]) {
             }
             ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
         }
-        should_spawn_ewma = game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS;
+        should_spawn_ewma =
+            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 50;
         log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
