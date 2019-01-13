@@ -781,7 +781,7 @@ int main(int argc, char* argv[]) {
             }
             ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
 
-            size_t total_ships = 0;
+            int total_ships = 0;
             for (auto player : game.players)
                 total_ships += player->ships.size();
 
