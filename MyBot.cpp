@@ -760,7 +760,7 @@ int main(int argc, char* argv[]) {
         if (!futures.empty() && !future_dropoff) {
             wanted = DROPOFF_COST -
                      game_map->at(futures.front().first)->halite -
-                     HALITE_RETURN;
+                     HALITE_RETURN * 0.75;
             if (wanted <= me->halite) {
                 // message(futures.front().first, "green");
                 future_dropoff = make_shared<Dropoff>(game.my_id, -2,
@@ -780,10 +780,18 @@ int main(int argc, char* argv[]) {
                 last_halite[ship->id] = ship->halite;
             }
             ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
+
+            size_t total_ships = 0;
+            for (auto player : game.players)
+                total_ships += player->ships.size();
+
+            double gather_turns = 2 * SHIP_COST / ewma;
+            should_spawn_ewma =
+                game.turn_number + gather_turns < MAX_TURNS - 50 &&
+                current_halite / total_ships > 2 * SHIP_COST;
+
+            log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
         }
-        should_spawn_ewma =
-            game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS - 50;
-        log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
 
         log::log("Spawn ships.");
         size_t ship_lo = 0, ship_hi = 1e3;
@@ -803,10 +811,6 @@ int main(int argc, char* argv[]) {
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 3;
         should_spawn &= halite_percentage >= 0.1;
-
-#if 0
-        should_spawn &= false;
-#endif
 
         if (should_spawn) {
             command_queue.push_back(me->shipyard->spawn());
