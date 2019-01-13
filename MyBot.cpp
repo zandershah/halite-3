@@ -47,16 +47,17 @@ inline bool hard_stuck(shared_ptr<Ship> ship) {
 }
 
 position_map<int> safe_to_move_cache;
-bool safe_to_move(shared_ptr<Ship> ship, Position p) {
+enum SafeState { SAFE, ACCEPTABLE, UNSAFE };
+SafeState safe_to_move(shared_ptr<Ship> ship, Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
     MapCell* cell = game_map->at(p);
 
-    if (!cell->is_occupied()) return true;
+    if (!cell->is_occupied()) return SAFE;
 
-    if (ship->owner == cell->ship->owner) return false;
+    if (ship->owner == cell->ship->owner) return UNSAFE;
     if (cell->has_structure() && cell->structure->owner != ship->owner)
-        return false;
-    if (tasks[ship->id] == HARD_RETURN) return true;
+        return UNSAFE;
+    if (tasks[ship->id] == HARD_RETURN) return ACCEPTABLE;
 
     // Estimate who is closer.
     if (!safe_to_move_cache.count(p)) {
@@ -79,7 +80,13 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
-    return closeness >= 0 && dropped >= SHIP_COST;
+    if (closeness >= 0) {
+        if (dropped >= SHIP_COST && ship->halite < cell->ship->halite)
+            return SAFE;
+        else
+            return ACCEPTABLE;
+    }
+    return UNSAFE;
 }
 
 void bfs(position_map<Halite>& dist, Position source) {
@@ -176,13 +183,14 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
             game_map->get_moves(ws.p, d, ws.ship_halite, ws.map_halite);
 
         auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
-            return !safe_to_move(ship, ws.p.doff(d));
+            return safe_to_move(ship, ws.p.doff(d)) == UNSAFE;
         });
         moves.erase(rit, moves.end());
         if (moves.empty()) {
             // We try to add all moves.
             for (Direction d : ALL_CARDINALS) {
-                if (safe_to_move(ship, ws.p.doff(d))) moves.push_back(d);
+                if (safe_to_move(ship, ws.p.doff(d)) != UNSAFE)
+                    moves.push_back(d);
             }
         }
         if (moves.empty()) break;
@@ -213,7 +221,8 @@ position_map<int> ideal_dropoff_cache;
 Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    const int close = max(15, game_map->width / 3);
+    const int close =
+        max(15, game_map->width / (game.players.size() == 2 ? 2 : 3));
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
         game_map->calc_dist(p, game.me->shipyard->position) <= close;
@@ -543,7 +552,7 @@ int main(int argc, char* argv[]) {
                     }
                     profit = min(profit, MAX_HALITE - ship->halite);
 
-                    if (!safe_to_move(ship, p)) profit = 0;
+                    if (safe_to_move(ship, p) == UNSAFE) profit = 0;
                     double rate = profit / (1.0 + d + dd);
 
                     uncompressed_cost.push_back(-rate + 5e3);
@@ -699,10 +708,13 @@ int main(int argc, char* argv[]) {
                 }
 
                 for (auto& it : surrounding_cost) {
-                    if (safe_to_move(explorers[i], it.first))
+                    SafeState safe_state = safe_to_move(explorers[i], it.first);
+                    if (safe_state == SAFE)
                         cost_matrix[i][move_indices[it.first]] = it.second;
-                    else if (game_map->at(it.first)->ship->owner != me->id)
-                        cost_matrix[i][move_indices[it.first]] = 1e7;
+                    else if (safe_state == ACCEPTABLE)
+                        cost_matrix[i][move_indices[it.first]] = it.second * 5;
+                    else
+                        cost_matrix[i][move_indices[it.first]] = 1e9;
                 }
             }
 
