@@ -80,13 +80,11 @@ SafeState safe_to_move(shared_ptr<Ship> ship, Position p) {
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
-    if (closeness >= 0) {
-        if (dropped >= SHIP_COST && ship->halite < cell->ship->halite)
-            return SAFE;
-        else
-            return ACCEPTABLE;
+    if (closeness >= 0 && dropped >= SHIP_COST &&
+        ship->halite < cell->ship->halite) {
+        return SAFE;
     }
-    return UNSAFE;
+    return ACCEPTABLE;
 }
 
 void bfs(position_map<Halite>& dist, Position source) {
@@ -239,17 +237,28 @@ Halite ideal_dropoff(Position p) {
             ++s;
 
             if (!ideal_dropoff_cache.count(pd)) {
-                int ally = 1e3, enemy = 1e3;
+                priority_queue<int> ally_pq, enemy_pq;
                 for (auto player : game.players) {
                     for (auto it : player->ships) {
                         int d = game_map->calc_dist(pd, it.second->position);
                         if (player->id == game.my_id)
-                            ally = min(ally, d);
+                            ally_pq.push(d);
                         else
-                            enemy = min(enemy, d);
+                            enemy_pq.push(d);
+                        while (ally_pq.size() > 3) ally_pq.pop();
+                        while (enemy_pq.size() > 3) enemy_pq.pop();
                     }
                 }
-                ideal_dropoff_cache[pd] = ally - enemy;
+                int ally = 0, enemy = 0;
+                while (!ally_pq.empty()) {
+                    ally += ally_pq.top();
+                    ally_pq.pop();
+                }
+                while (!enemy_pq.empty()) {
+                    enemy += enemy_pq.top();
+                    enemy_pq.pop();
+                }
+                ideal_dropoff_cache[pd] = ally / 3 - enemy / 3;
             }
 
             if (ideal_dropoff_cache[pd] <= 1)
@@ -294,6 +303,9 @@ int main(int argc, char* argv[]) {
         ideal_dropoff_cache.clear();
         if (me->ships.size() >= 75 || game_map->width >= 56) PADDING = 15;
         if (me->ships.size() >= 100 && game_map->width == 64) PADDING = 5;
+
+        int total_ships = 0;
+        for (auto player : game.players) total_ships += player->ships.size();
 
         vector<Command> command_queue;
 
@@ -454,7 +466,8 @@ int main(int argc, char* argv[]) {
 
             switch (tasks[id]) {
                 case EXPLORE:
-                    if (ship->halite > min(HALITE_RETURN, current_halite * 1.0))
+                    if (ship->halite >
+                        min(HALITE_RETURN, current_halite * 2.0 / total_ships))
                         tasks[id] = RETURN;
                     break;
                 case RETURN:
@@ -781,14 +794,10 @@ int main(int argc, char* argv[]) {
             }
             ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
 
-            int total_ships = 0;
-            for (auto player : game.players)
-                total_ships += player->ships.size();
-
             double gather_turns = 2 * SHIP_COST / ewma;
             should_spawn_ewma =
                 game.turn_number + gather_turns < MAX_TURNS - 50 &&
-                current_halite / total_ships > 2 * SHIP_COST;
+                current_halite * 1.0 / total_ships > 2 * SHIP_COST;
 
             log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
         }
