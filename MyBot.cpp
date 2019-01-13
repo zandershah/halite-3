@@ -480,11 +480,21 @@ int main(int argc, char* argv[]) {
                 case HARD_RETURN:
                     if (ship->position == cell->closest_base) break;
                 case RETURN:
-                    if (future_dropoff &&
-                        game_map->calc_dist(cell->closest_base, ship->next) > 5)
-                        ship->next = future_dropoff->position;
-                    else
+                    if (future_dropoff) {
+                        int d_close =
+                            game_map->calc_dist(cell->closest_base, ship->next);
+                        int d_new = game_map->calc_dist(
+                            future_dropoff->position, ship->next);
+                        int d_apart = game_map->calc_dist(
+                            cell->closest_base, future_dropoff->position);
+                        if (d_close > 5 && d_new < d_apart) {
+                            ship->next = future_dropoff->position;
+                        } else {
+                            ship->next = cell->closest_base;
+                        }
+                    } else {
                         ship->next = cell->closest_base;
+                    }
                     returners.push_back(ship);
             }
         }
@@ -513,8 +523,7 @@ int main(int argc, char* argv[]) {
                     MapCell* cell = game_map->at(p);
 
                     double d = game_map->calc_dist(ship->position, p);
-                    double dd =
-                        sqrt(game_map->calc_dist(p, cell->closest_base));
+                    double dd = game_map->calc_dist(p, cell->closest_base);
 
                     Halite profit = cell->halite - dist[p];
 
@@ -652,7 +661,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 75) {
+                            .count() > 50) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
