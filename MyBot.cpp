@@ -22,8 +22,6 @@ const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
-double halite_percentage = 0.0;
-
 bool started_hard_return = false;
 
 unordered_map<EntityId, int> last_moved;
@@ -47,17 +45,16 @@ inline bool hard_stuck(shared_ptr<Ship> ship) {
 }
 
 position_map<int> safe_to_move_cache;
-enum SafeState { SAFE, ACCEPTABLE, UNSAFE };
-SafeState safe_to_move(shared_ptr<Ship> ship, Position p) {
+bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
     MapCell* cell = game_map->at(p);
 
-    if (!cell->is_occupied()) return SAFE;
+    if (!cell->is_occupied()) return true;
 
-    if (ship->owner == cell->ship->owner) return UNSAFE;
+    if (ship->owner == cell->ship->owner) return false;
     if (cell->has_structure() && cell->structure->owner != ship->owner)
-        return UNSAFE;
-    if (tasks[ship->id] == HARD_RETURN) return ACCEPTABLE;
+        return false;
+    if (tasks[ship->id] == HARD_RETURN) return true;
 
     // Estimate who is closer.
     if (!safe_to_move_cache.count(p)) {
@@ -80,11 +77,8 @@ SafeState safe_to_move(shared_ptr<Ship> ship, Position p) {
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
-    if (closeness >= 0 && dropped >= SHIP_COST &&
-        ship->halite < cell->ship->halite) {
-        return SAFE;
-    }
-    return ACCEPTABLE;
+    return closeness >= 0 && dropped >= SHIP_COST &&
+           ship->halite < cell->ship->halite;
 }
 
 void bfs(position_map<Halite>& dist, Position source) {
@@ -181,14 +175,13 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
             game_map->get_moves(ws.p, d, ws.ship_halite, ws.map_halite);
 
         auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
-            return safe_to_move(ship, ws.p.doff(d)) == UNSAFE;
+            return !safe_to_move(ship, ws.p.doff(d));
         });
         moves.erase(rit, moves.end());
         if (moves.empty()) {
             // We try to add all moves.
             for (Direction d : ALL_CARDINALS) {
-                if (safe_to_move(ship, ws.p.doff(d)) != UNSAFE)
-                    moves.push_back(d);
+                if (safe_to_move(ship, ws.p.doff(d))) moves.push_back(d);
             }
         }
         if (moves.empty()) break;
@@ -381,7 +374,6 @@ int main(int argc, char* argv[]) {
                 targets.insert(cell.position);
             }
         }
-        halite_percentage = current_halite * 1.0 / total_halite;
 
         for (auto& it : me->ships) {
             MapCell* cell = game_map->at(it.second);
@@ -565,7 +557,7 @@ int main(int argc, char* argv[]) {
                     }
                     profit = min(profit, MAX_HALITE - ship->halite);
 
-                    if (safe_to_move(ship, p) == UNSAFE) profit = 0;
+                    if (!safe_to_move(ship, p)) profit = 0;
                     double rate = profit / (1.0 + d + dd);
 
                     uncompressed_cost.push_back(-rate + 5e3);
@@ -683,7 +675,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 50) {
+                            .count() > 75) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -721,13 +713,10 @@ int main(int argc, char* argv[]) {
                 }
 
                 for (auto& it : surrounding_cost) {
-                    SafeState safe_state = safe_to_move(explorers[i], it.first);
-                    if (safe_state == SAFE)
+                    if (safe_to_move(explorers[i], it.first))
                         cost_matrix[i][move_indices[it.first]] = it.second;
-                    else if (safe_state == ACCEPTABLE)
-                        cost_matrix[i][move_indices[it.first]] = it.second * 5;
-                    else
-                        cost_matrix[i][move_indices[it.first]] = 1e9;
+                    else if (game_map->at(it.first)->ship->owner != me->id)
+                        cost_matrix[i][move_indices[it.first]] = 1e7;
                 }
             }
 
@@ -793,11 +782,8 @@ int main(int argc, char* argv[]) {
                 last_halite[ship->id] = ship->halite;
             }
             ewma = ALPHA * h / (me->ships.size() * 5) + (1 - ALPHA) * ewma;
-
-            double gather_turns = 2 * SHIP_COST / ewma;
             should_spawn_ewma =
-                game.turn_number + gather_turns < MAX_TURNS - 50 &&
-                current_halite * 1.0 / total_ships > 2 * SHIP_COST;
+                game.turn_number + 2 * SHIP_COST / ewma < MAX_TURNS;
 
             log::log("EWMA:", ewma, "Should spawn ships:", should_spawn_ewma);
         }
@@ -816,10 +802,9 @@ int main(int argc, char* argv[]) {
         bool should_spawn = me->halite >= SHIP_COST + wanted;
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
-
+        should_spawn &= current_halite * 1.0 / total_ships > SHIP_COST;
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 3;
-        should_spawn &= halite_percentage >= 0.1;
 
         if (should_spawn) {
             command_queue.push_back(me->shipyard->spawn());
