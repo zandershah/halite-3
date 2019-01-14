@@ -799,7 +799,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        bool should_spawn = me->halite >= SHIP_COST + wanted;
+        bool should_spawn = me->halite >= SHIP_COST + max(0, wanted);
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
         should_spawn &= current_halite * 1.0 / total_ships > SHIP_COST;
