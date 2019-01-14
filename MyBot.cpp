@@ -170,7 +170,7 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
     WalkState ws(ship);
 
     double turns = 1;
-    for (; ws.p != d && turns <= 50; ++turns) {
+    for (; ws.p != d && turns <= 100; ++turns) {
         auto moves =
             game_map->get_moves(ws.p, d, ws.ship_halite, ws.map_halite);
 
@@ -413,15 +413,8 @@ int main(int argc, char* argv[]) {
 
             if (!tasks.count(id)) continue;
 
-            double return_turn = MAX_TURNS;
-
-            const Task task_holder = tasks[id];
-            tasks[id] = HARD_RETURN;
-            for (size_t i = 0; i < 50; ++i) {
-                auto ws = random_walk(it.second, cell->closest_base);
-                return_turn = min(return_turn, ws.turns);
-            }
-            tasks[id] = task_holder;
+            double return_turn =
+                game_map->calc_dist(ship->position, cell->closest_base);
 
             auto moves = game_map->get_moves(cell->position, cell->closest_base,
                                              it.second->halite, 0);
