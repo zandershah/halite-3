@@ -452,7 +452,7 @@ int main(int argc, char* argv[]) {
             switch (tasks[id]) {
                 case EXPLORE:
                     if (ship->halite >
-                        min(HALITE_RETURN, current_halite * 3.0 / total_ships))
+                        min(HALITE_RETURN, current_halite * 2.0 / total_ships))
                         tasks[id] = RETURN;
                     break;
                 case RETURN:
@@ -795,7 +795,7 @@ int main(int argc, char* argv[]) {
         bool should_spawn = me->halite >= SHIP_COST + max(0, wanted);
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
-        should_spawn &= current_halite * 3.0 / total_ships > SHIP_COST;
+        should_spawn &= current_halite * 1.0 / total_ships > SHIP_COST;
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 3;
 
