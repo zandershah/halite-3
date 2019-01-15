@@ -72,7 +72,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     }
 
     const int d = game_map->calc_dist(p, ship->position);
-    const int closeness = safe_to_move_cache[p] - (d <= 2);
+    const int closeness = safe_to_move_cache[p] - (d <= 3);
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
