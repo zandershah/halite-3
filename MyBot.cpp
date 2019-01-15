@@ -76,10 +76,11 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
-    if (closeness <= -2 ||
-        ship->halite > cell->ship->halite + MAX_HALITE * 0.25)
+    if (closeness < -2 ||
+        ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
-    return game.players.size() == 2 || dropped >= SHIP_COST;
+    }
+    return game.players.size() == 2 || (closeness >= 0 && dropped >= SHIP_COST);
 }
 
 void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
@@ -454,7 +455,7 @@ int main(int argc, char* argv[]) {
             switch (tasks[id]) {
                 case EXPLORE:
                     if (ship->halite >
-                        min(HALITE_RETURN, current_halite * 2.0 / total_ships))
+                        min(HALITE_RETURN, current_halite * 3.0 / total_ships))
                         tasks[id] = RETURN;
                     break;
                 case RETURN:
@@ -540,7 +541,7 @@ int main(int argc, char* argv[]) {
                         game.players.size() == 4 || d <= INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (d <= 1 && cell->ship &&
+                    if (d <= 2 && cell->ship &&
                         cell->ship->owner != game.my_id && cell->really_there) {
                         profit += (INSPIRED_BONUS_MULTIPLIER + 1) *
                                   cell->ship->halite;
@@ -797,7 +798,7 @@ int main(int argc, char* argv[]) {
         bool should_spawn = me->halite >= SHIP_COST + max(0, wanted);
         should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
-        should_spawn &= current_halite * 1.0 / total_ships > SHIP_COST;
+        should_spawn &= current_halite * 2.0 / total_ships > SHIP_COST;
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 5;
 
