@@ -225,9 +225,9 @@ Halite ideal_dropoff(Position p) {
 
     Halite halite_around = 0;
     double s = 0;
-    for (int dy = -5; dy <= 5; ++dy) {
-        for (int dx = -5; dx <= 5; ++dx) {
-            if (abs(dx) + abs(dy) > 5) continue;
+    for (int dy = -3; dy <= 3; ++dy) {
+        for (int dx = -3; dx <= 3; ++dx) {
+            if (abs(dx) + abs(dy) > 3) continue;
             Position pd(p.x + dx, p.y + dy);
 
             ++s;
@@ -746,7 +746,7 @@ int main(int argc, char* argv[]) {
 
             double d = 1;
             for (auto it : me->ships)
-                d += pow(game_map->calc_dist(p, it.second->position), 2);
+                d += sqrt(game_map->calc_dist(p, it.second->position));
             d /= me->ships.size();
 
             futures.emplace_back(p, ideal / d);
