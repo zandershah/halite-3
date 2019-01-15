@@ -18,6 +18,7 @@ struct MapCell {
 
     Position closest_base;
     bool inspired = false;
+    bool really_there = false;
     std::unordered_map<Direction, size_t> close_ships;
 
     MapCell(int x, int y, Halite halite)
