@@ -61,23 +61,23 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         for (auto& it : game.me->ships) {
             if (tasks[it.second->id] != EXPLORE) continue;
             int d = game_map->calc_dist(p, it.second->position);
-            closeness += pow(2, 3 - d);
+            closeness += d <= 2;
         }
         for (auto& it : game.players[cell->ship->owner]->ships) {
             if (it.second->id == cell->ship->id) continue;
             int d = game_map->calc_dist(p, it.second->position);
-            closeness -= pow(2, 3 - d);
+            closeness -= d <= 2;
         }
         safe_to_move_cache[p] = closeness;
     }
 
     const int d = game_map->calc_dist(p, ship->position);
-    const int closeness = safe_to_move_cache[p] - pow(2, 3 - d);
+    const int closeness = safe_to_move_cache[p] - (d <= 2);
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
-    if (closeness < -2 ||
-        ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
+    if (closeness <= -2 ||
+        ship->halite > cell->ship->halite - MAX_HALITE * 0.25) {
         return false;
     }
     return game.players.size() == 2 || (closeness >= 0 && dropped >= SHIP_COST);
@@ -103,7 +103,7 @@ void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
                 game_map->calc_dist(ship->position, p)) {
                 continue;
             }
-            if (!safe_to_move(ship, pp)) continue;
+            if (game.players.size() == 4 && !safe_to_move(ship, pp)) continue;
 
             if (!dist.count(pp) || dist[pp] > dist[p] + cost)
                 dist[pp] = dist[p] + cost;
@@ -177,7 +177,8 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
             game_map->get_moves(ws.p, d, ws.ship_halite, ws.map_halite);
 
         auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
-            return !safe_to_move(ship, ws.p.doff(d));
+            return game.players.size() == 4 &&
+                   !safe_to_move(ship, ws.p.doff(d));
         });
         moves.erase(rit, moves.end());
         if (moves.empty()) {
