@@ -818,7 +818,7 @@ int main(int argc, char* argv[]) {
                 if (tasks[ship->id] != RETURN ||
                     ship->next == future_dropoff->position)
                     continue;
-                if (game_map->calc_dist(ship->position, ship->next) < min(d, 5))
+                if (game_map->calc_dist(ship->position, ship->next) < d)
                     fluff += ship->halite;
             }
 
