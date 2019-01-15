@@ -213,27 +213,22 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
 
 position_map<int> ideal_dropoff_cache;
 Halite ideal_dropoff(Position p) {
+    return false;
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    int close_dropoff = 15;
-    if (game.players.size() == 2)
-        close_dropoff = max(close_dropoff, game_map->width / 2);
-    else
-        close_dropoff = max(close_dropoff, game_map->width / 3);
-
+    const int close =
+        max(15, game_map->width / (game.players.size() == 2 ? 2 : 3));
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
-        game_map->calc_dist(p, game.me->shipyard->position) <= close_dropoff;
+        game_map->calc_dist(p, game.me->shipyard->position) <= close;
     for (auto& it : game.me->dropoffs)
-        local_dropoffs |=
-            game_map->calc_dist(p, it.second->position) <= close_dropoff;
+        local_dropoffs |= game_map->calc_dist(p, it.second->position) <= close;
 
-    int close_check = 3;
     Halite halite_around = 0;
     double s = 0;
-    for (int dy = -close_check; dy <= close_check; ++dy) {
-        for (int dx = -close_check; dx <= close_check; ++dx) {
-            if (abs(dx) + abs(dy) > close_check) continue;
+    for (int dy = -3; dy <= 3; ++dy) {
+        for (int dx = -3; dx <= 3; ++dx) {
+            if (abs(dx) + abs(dy) > 3) continue;
             Position pd(p.x + dx, p.y + dy);
 
             ++s;
@@ -270,7 +265,7 @@ Halite ideal_dropoff(Position p) {
 
     Halite saved = halite_around;
 
-    bool ideal = saved >= DROPOFF_COST;
+    bool ideal = saved >= DROPOFF_COST - game_map->at(p)->halite;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 50;
     ideal &= !started_hard_return;
@@ -337,7 +332,7 @@ int main(int argc, char* argv[]) {
                 me->ships.erase(ship->id);
             } else {
                 me->dropoffs[future_dropoff->id] = future_dropoff;
-                message(future_dropoff->position, "blue");
+                message(future_dropoff->position, "red");
             }
         }
 
@@ -561,6 +556,12 @@ int main(int argc, char* argv[]) {
                     if (!safe_to_move(ship, p)) profit = 0;
                     double rate = profit / (1.0 + d + dd);
 
+#if 1
+                    if (current_halite * 1.0 / total_ships <= 10 &&
+                        cell->inspired && ship->position == p)
+                        rate = pow(profit, 2) / pow(1.0 + d + dd);
+#endif
+
                     uncompressed_cost.push_back(-rate + 5e3);
                     if (rate > 0) pq.push(uncompressed_cost.back());
                     while (pq.size() > PADDING) pq.pop();
@@ -677,7 +678,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 250) {
+                            .count() > 50) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -801,30 +802,12 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        bool should_spawn = !game_map->at(me->shipyard)->is_occupied();
+        bool should_spawn = me->halite >= SHIP_COST + max(0, wanted);
+        should_spawn &= !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
         should_spawn &= current_halite * 2.0 / total_ships > SHIP_COST;
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 5;
-
-        // Expected return in the next few turns, in order to do wanted better.
-        Halite fluff = 0;
-        if (future_dropoff) {
-            // Turns before.
-            int d = 1e3;
-            for (auto ship : explorers) {
-                d = min(d, game_map->calc_dist(ship->position,
-                                               future_dropoff->position));
-                if (tasks[ship->id] != RETURN ||
-                    ship->next == future_dropoff->position)
-                    continue;
-                if (game_map->calc_dist(ship->position, ship->next) < min(d, 5))
-                    fluff += ship->halite;
-            }
-
-            if (fluff) log::log("FLUFF!", fluff);
-        }
-        should_spawn &= me->halite >= SHIP_COST + max(0, wanted - fluff);
 
         if (should_spawn) {
             command_queue.push_back(me->shipyard->spawn());
