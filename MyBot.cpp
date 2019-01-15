@@ -61,12 +61,12 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         for (auto& it : game.me->ships) {
             if (tasks[it.second->id] != EXPLORE) continue;
             int d = game_map->calc_dist(p, it.second->position);
-            closeness += d <= 2;
+            closeness += d <= 3;
         }
         for (auto& it : game.players[cell->ship->owner]->ships) {
             if (it.second->id == cell->ship->id) continue;
             int d = game_map->calc_dist(p, it.second->position);
-            closeness -= d <= 2;
+            closeness -= d <= 3;
         }
         safe_to_move_cache[p] = closeness;
     }
@@ -76,7 +76,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
 
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
-    if (closeness <= -2 ||
+    if (closeness <= 0 ||
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
