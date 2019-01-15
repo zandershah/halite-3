@@ -103,7 +103,7 @@ void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
                 game_map->calc_dist(ship->position, p)) {
                 continue;
             }
-            if (game.players.size() == 4 && !safe_to_move(ship, pp)) continue;
+            if (!safe_to_move(ship, pp)) continue;
 
             if (!dist.count(pp) || dist[pp] > dist[p] + cost)
                 dist[pp] = dist[p] + cost;
@@ -177,8 +177,7 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
             game_map->get_moves(ws.p, d, ws.ship_halite, ws.map_halite);
 
         auto rit = remove_if(moves.begin(), moves.end(), [&](Direction d) {
-            return game.players.size() == 4 &&
-                   !safe_to_move(ship, ws.p.doff(d));
+            return !safe_to_move(ship, ws.p.doff(d));
         });
         moves.erase(rit, moves.end());
         if (moves.empty()) {
