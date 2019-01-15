@@ -215,11 +215,7 @@ position_map<int> ideal_dropoff_cache;
 Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
-    int close_dropoff = 15;
-    if (game.players.size() == 2)
-        close_dropoff = max(close_dropoff, game_map->width / 2);
-    else
-        close_dropoff = max(close_dropoff, game_map->width / 3);
+    int close_dropoff = max(15, game_map->width / 3);
 
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
@@ -752,7 +748,7 @@ int main(int argc, char* argv[]) {
 
             double d = 1;
             for (auto it : me->ships)
-                d += sqrt(game_map->calc_dist(p, it.second->position));
+                d += game_map->calc_dist(p, it.second->position);
             d /= me->ships.size();
 
             futures.emplace_back(p, ideal / d);
