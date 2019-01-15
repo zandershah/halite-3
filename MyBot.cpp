@@ -80,7 +80,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
-    return game.players.size() == 2 || (closeness >= 0 && dropped >= SHIP_COST);
+    return game.players.size() == 2 || dropped >= SHIP_COST;
 }
 
 void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
