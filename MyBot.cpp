@@ -77,7 +77,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     Halite dropped = ship->halite + cell->ship->halite + cell->halite;
     if (cell->inspired) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
     if (closeness <= -2 ||
-        ship->halite > cell->ship->halite - MAX_HALITE * 0.25) {
+        ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
     return game.players.size() == 2 || (closeness >= 0 && dropped >= SHIP_COST);
