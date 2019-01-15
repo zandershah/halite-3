@@ -748,7 +748,7 @@ int main(int argc, char* argv[]) {
 
             double d = 1;
             for (auto it : me->ships)
-                d += game_map->calc_dist(p, it.second->position);
+                d += sqrt(game_map->calc_dist(p, it.second->position));
             d /= me->ships.size();
 
             futures.emplace_back(p, ideal / d);
