@@ -31,6 +31,7 @@ inline Halite extracted(Halite h) {
 }
 
 shared_ptr<Dropoff> future_dropoff;
+set<Position> future_collisions;
 
 // Fluorine JSON.
 stringstream flog;
@@ -305,6 +306,8 @@ int main(int argc, char* argv[]) {
         int total_ships = 0;
         for (auto player : game.players) total_ships += player->ships.size();
 
+        for (auto& it : me->ships) future_collisions.erase(it.second->position);
+
         vector<Command> command_queue;
 
         log::log("Dropoffs.");
@@ -359,7 +362,14 @@ int main(int argc, char* argv[]) {
 
         Halite current_halite = 0;
         bool all_empty = true;
-        set<Position> targets;
+        multiset<Position> targets;
+        for (Position p : future_collisions) {
+            targets.insert(p);
+            targets.insert(p);
+            log::log("Collision at", p);
+        }
+
+        future_collisions.clear();
         for (vector<MapCell>& cell_row : game_map->cells) {
             for (MapCell& cell : cell_row) {
                 Position p = cell.position;
@@ -472,6 +482,7 @@ int main(int argc, char* argv[]) {
             if (hard_stuck(ship)) {
                 command_queue.push_back(ship->stay_still());
                 targets.erase(ship->position);
+                future_collisions.insert(ship->position);
                 game_map->at(ship)->mark_unsafe(ship);
                 continue;
             }
@@ -727,12 +738,14 @@ int main(int argc, char* argv[]) {
                 if (explorers[i]->position == move_space[assignment[i]]) {
                     game_map->at(explorers[i])->mark_unsafe(explorers[i]);
                     command_queue.push_back(explorers[i]->stay_still());
+                    future_collisions.insert(explorers[i]->position);
                 }
                 for (Direction d : ALL_CARDINALS) {
                     Position pp =
                         game_map->normalize(explorers[i]->position.doff(d));
                     if (pp == move_space[assignment[i]]) {
                         command_queue.push_back(explorers[i]->move(d));
+                        future_collisions.insert(pp);
                         game_map->at(pp)->mark_unsafe(explorers[i]);
                         last_moved[explorers[i]->id] = game.turn_number;
                         break;
@@ -818,7 +831,7 @@ int main(int argc, char* argv[]) {
                     fluff += ship->halite;
             }
 
-            if (fluff) log::log("FLUFF!", fluff);
+            if (fluff) log::log("Fluff!", fluff);
         }
         should_spawn &= me->halite >= SHIP_COST + max(0, wanted - fluff);
 
