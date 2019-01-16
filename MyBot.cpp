@@ -685,7 +685,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 50) {
+                            .count() > 250) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -719,7 +719,7 @@ int main(int argc, char* argv[]) {
                     }
 
                     if (last_moved[explorers[i]->id] <= game.turn_number - 5)
-                        surrounding_cost[p] = 1e7;
+                        surrounding_cost[p] = 1e8;
                 }
 
                 for (auto& it : surrounding_cost) {
