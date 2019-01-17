@@ -161,7 +161,7 @@ struct WalkState {
         if (tasks[ship_id] == EXPLORE) {
             rate = (h - starting_ship_halite) / turns;
         } else {
-            rate = h / pow(turns, 2);
+            rate = h / pow(turns, 4);
         }
         return rate;
     }
@@ -795,7 +795,21 @@ int main(int argc, char* argv[]) {
             wanted = DROPOFF_COST -
                      game_map->at(futures.front().first)->halite -
                      HALITE_RETURN * 0.5;
-            if (wanted <= me->halite) {
+
+            Halite fluff = 0;
+            // Turns before.
+            int d = 1e3;
+            for (auto ship : explorers) {
+                d = min(d, game_map->calc_dist(ship->position,
+                                               future_dropoff->position));
+                if (tasks[ship->id] != RETURN ||
+                    game_map->calc_dist(ship->position, ship->next) > 5) {
+                    continue;
+                }
+                fluff += ship->halite;
+            }
+
+            if (wanted - fluff <= me->halite) {
                 // message(futures.front().first, "green");
                 future_dropoff = make_shared<Dropoff>(game.my_id, -2,
                                                       futures.front().first.x,
