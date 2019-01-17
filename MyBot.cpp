@@ -464,7 +464,7 @@ int main(int argc, char* argv[]) {
             if (started_hard_return) tasks[id] = HARD_RETURN;
 
             double halite_cutoff =
-                max(MAX_HALITE * 0.25, current_halite * 3.0 / total_ships);
+                max(MAX_HALITE * 0.5, current_halite * 3.0 / total_ships);
             halite_cutoff = min(halite_cutoff, HALITE_RETURN);
             switch (tasks[id]) {
                 case EXPLORE:
@@ -566,9 +566,7 @@ int main(int argc, char* argv[]) {
 
                     Halite profit = cell->halite - dist[p];
 
-                    bool should_inspire = true;  // game.players.size() == 4 ||
-                                                 // d <= 2 * INSPIRATION_RADIUS;
-                    if (cell->inspired && should_inspire)
+                    if (cell->inspired)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     if (d <= 2 && cell->ship &&
                         cell->ship->owner != game.my_id && cell->really_there) {
@@ -704,7 +702,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 750) {
+                            .count() > 250) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -793,7 +791,7 @@ int main(int argc, char* argv[]) {
         if (!futures.empty() && !future_dropoff) {
             wanted = DROPOFF_COST -
                      game_map->at(futures.front().first)->halite -
-                     HALITE_RETURN * 0.5;
+                     HALITE_RETURN * 0.75;
 
             Halite fluff = 0;
             // Turns before.
@@ -805,7 +803,7 @@ int main(int argc, char* argv[]) {
                     game_map->calc_dist(ship->position, ship->next) > 5) {
                     continue;
                 }
-                fluff += ship->halite * 0.85;
+                fluff += ship->halite * 0.95;
             }
 
             if (wanted - fluff <= me->halite) {
@@ -862,7 +860,7 @@ int main(int argc, char* argv[]) {
                     ship->next == future_dropoff->position)
                     continue;
                 if (game_map->calc_dist(ship->position, ship->next) < d)
-                    fluff += ship->halite * 0.85;
+                    fluff += ship->halite * 0.95;
             }
 
             if (fluff) log::log("Fluff!", fluff);
