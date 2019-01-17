@@ -22,7 +22,7 @@ const double ALPHA = 0.35;
 double ewma = MAX_HALITE;
 bool should_spawn_ewma = true;
 
-set<Position> started_hard_return;
+bool started_hard_return = false;
 
 unordered_map<EntityId, int> last_moved;
 
@@ -81,7 +81,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
-    return game.players.size() == 2 || dropped >= SHIP_COST;
+    return game.players.size() == 2 || dropped >= 2 * SHIP_COST;
 }
 
 void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
@@ -260,7 +260,7 @@ Halite ideal_dropoff(Position p) {
                 ideal_dropoff_cache[pd] = ally / 3 - enemy / 3;
             }
 
-            if (ideal_dropoff_cache[pd] <= 1)
+            if (ideal_dropoff_cache[pd] <= 3)
                 halite_around += game_map->at(pd)->halite;
         }
     }
@@ -270,7 +270,7 @@ Halite ideal_dropoff(Position p) {
     bool ideal = saved >= DROPOFF_COST;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 50;
-    ideal &= started_hard_return.empty();
+    ideal &= !started_hard_return;
     // ideal &= local_ships >= 3;
 
     double bases = 2.0 + game.me->dropoffs.size();
@@ -387,7 +387,19 @@ int main(int argc, char* argv[]) {
 
                 current_halite += cell.halite;
                 all_empty &= !cell.halite;
-                targets.insert(cell.position);
+                targets.insert(p);
+            }
+        }
+        if (game.players.size() == 2) {
+            for (vector<MapCell>& cell_row : game_map->cells) {
+                for (MapCell& cell : cell_row) {
+                    // Will be highly contested.
+                    if (cell.halite >= current_halite * 0.05) {
+                        targets.insert(cell.position);
+                        targets.insert(cell.position);
+                        log::log("Triple selecting", cell.position);
+                    }
+                }
             }
         }
 
@@ -443,7 +455,7 @@ int main(int argc, char* argv[]) {
             return_turn += game.turn_number;
             if (all_empty || return_turn > MAX_TURNS) {
                 tasks[id] = HARD_RETURN;
-                started_hard_return.insert(cell->closest_base);
+                started_hard_return = true;
             }
         }
 
@@ -462,8 +474,7 @@ int main(int argc, char* argv[]) {
             if (!tasks.count(id)) tasks[id] = EXPLORE;
 
             // Return if game will end soon.
-            if (started_hard_return.count(cell->closest_base))
-                tasks[id] = HARD_RETURN;
+            if (started_hard_return) tasks[id] = HARD_RETURN;
 
             switch (tasks[id]) {
                 case EXPLORE:
@@ -685,7 +696,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 250) {
+                            .count() > 500) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -719,7 +730,7 @@ int main(int argc, char* argv[]) {
                     }
 
                     if (last_moved[explorers[i]->id] <= game.turn_number - 5)
-                        surrounding_cost[p] = 1e8;
+                        surrounding_cost[p] = 1e7;
                 }
 
                 for (auto& it : surrounding_cost) {
@@ -802,7 +813,7 @@ int main(int argc, char* argv[]) {
 
         log::log("Spawn ships.");
         size_t ship_lo = 0, ship_hi = 1e3;
-        if (started_hard_return.empty()) {
+        if (!started_hard_return) {
             swap(ship_lo, ship_hi);
             for (auto& player : game.players) {
                 if (player->id == game.my_id) continue;
@@ -812,7 +823,7 @@ int main(int argc, char* argv[]) {
         }
 
         bool should_spawn = !game_map->at(me->shipyard)->is_occupied();
-        should_spawn &= started_hard_return.empty();
+        should_spawn &= !started_hard_return;
         should_spawn &= current_halite * 2.0 / total_ships > SHIP_COST;
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 5;
