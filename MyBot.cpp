@@ -213,7 +213,6 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
 
 position_map<int> ideal_dropoff_cache;
 Halite ideal_dropoff(Position p) {
-    return false;
     unique_ptr<GameMap>& game_map = game.game_map;
 
     int close_dropoff = 15;
@@ -806,7 +805,7 @@ int main(int argc, char* argv[]) {
                     game_map->calc_dist(ship->position, ship->next) > 5) {
                     continue;
                 }
-                fluff += ship->halite;
+                fluff += ship->halite * 0.85;
             }
 
             if (wanted - fluff <= me->halite) {
@@ -863,7 +862,7 @@ int main(int argc, char* argv[]) {
                     ship->next == future_dropoff->position)
                     continue;
                 if (game_map->calc_dist(ship->position, ship->next) < d)
-                    fluff += ship->halite;
+                    fluff += ship->halite * 0.85;
             }
 
             if (fluff) log::log("Fluff!", fluff);
