@@ -260,7 +260,7 @@ Halite ideal_dropoff(Position p) {
                 ideal_dropoff_cache[pd] = ally / 3 - enemy / 3;
             }
 
-            if (ideal_dropoff_cache[pd] <= 3)
+            if (ideal_dropoff_cache[pd] <= 1)
                 halite_around += game_map->at(pd)->halite;
         }
     }
@@ -476,11 +476,12 @@ int main(int argc, char* argv[]) {
             // Return if game will end soon.
             if (started_hard_return) tasks[id] = HARD_RETURN;
 
+            double halite_cutoff =
+                max(MAX_HALITE * 0.25, current_halite * 3.0 / total_ships);
+            halite_cutoff = min(halite_cutoff, HALITE_RETURN);
             switch (tasks[id]) {
                 case EXPLORE:
-                    if (ship->halite >
-                        min(HALITE_RETURN, current_halite * 3.0 / total_ships))
-                        tasks[id] = RETURN;
+                    if (ship->halite > halite_cutoff) tasks[id] = RETURN;
                     break;
                 case RETURN:
                     if (!closest_base_dist) {
@@ -534,6 +535,22 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        position_map<bool> fresh_dropoffs;
+        for (auto it : me->dropoffs) {
+            int close_check = 3;
+            Halite halite_around = 0;
+            for (int dy = -close_check; dy <= close_check; ++dy) {
+                for (int dx = -close_check; dx <= close_check; ++dx) {
+                    if (abs(dx) + abs(dy) > close_check) continue;
+                    Position pd(it.second->position.x + dx,
+                                it.second->position.y + dy);
+
+                    halite_around += game_map->at(pd)->halite;
+                }
+            }
+            fresh_dropoffs[it.second->position] = halite_around >= DROPOFF_COST;
+        }
+
         end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
 
@@ -571,8 +588,12 @@ int main(int argc, char* argv[]) {
                         profit += (INSPIRED_BONUS_MULTIPLIER + 1) *
                                   cell->ship->halite;
                     }
+                    // Rush to new dropoff.
                     if (future_dropoff &&
-                        game_map->calc_dist(future_dropoff->position, p) <= 3) {
+                        game_map->calc_dist(future_dropoff->position, p) <= 3 &&
+                        (!fresh_dropoffs[game_map->at(ship)->closest_base] ||
+                         game_map->at(ship)->closest_base ==
+                             future_dropoff->position)) {
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     }
                     profit = min(profit, MAX_HALITE - ship->halite);
@@ -696,7 +717,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 500) {
+                            .count() > 250) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
