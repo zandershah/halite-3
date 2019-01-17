@@ -17,7 +17,8 @@ struct MapCell {
     std::shared_ptr<Entity> structure;
 
     Position closest_base;
-    bool inspired = false;
+    size_t close_allies = 0;
+    size_t close_enemies = 0;
     bool really_there = false;
     std::unordered_map<Direction, size_t> close_ships;
 
@@ -29,6 +30,10 @@ struct MapCell {
     bool is_occupied() const { return static_cast<bool>(ship); }
 
     bool has_structure() const { return static_cast<bool>(structure); }
+
+    bool inspired() const {
+        return close_enemies >= constants::INSPIRATION_SHIP_COUNT;
+    }
 
     void mark_unsafe(std::shared_ptr<Ship>& ship) { this->ship = ship; }
 };
