@@ -17,8 +17,8 @@ struct MapCell {
     std::shared_ptr<Entity> structure;
 
     Position closest_base;
-    size_t close_allies = 0;
-    size_t close_enemies = 0;
+    int close_allies = 0;
+    int close_enemies = 0;
     bool really_there = false;
     std::unordered_map<Direction, size_t> close_ships;
 
