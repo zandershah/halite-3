@@ -81,7 +81,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
-    return game.players.size() == 2 || dropped >= 2 * SHIP_COST;
+    return game.players.size() == 2 || dropped >= 1.5 * SHIP_COST;
 }
 
 void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
@@ -260,7 +260,7 @@ Halite ideal_dropoff(Position p) {
                 ideal_dropoff_cache[pd] = ally / 3 - enemy / 3;
             }
 
-            if (ideal_dropoff_cache[pd] <= 1)
+            if (ideal_dropoff_cache[pd] <= 2)
                 halite_around += game_map->at(pd)->halite;
         }
     }
@@ -388,18 +388,6 @@ int main(int argc, char* argv[]) {
                 current_halite += cell.halite;
                 all_empty &= !cell.halite;
                 targets.insert(p);
-            }
-        }
-        if (game.players.size() == 2) {
-            for (vector<MapCell>& cell_row : game_map->cells) {
-                for (MapCell& cell : cell_row) {
-                    // Will be highly contested.
-                    if (cell.halite >= current_halite * 0.05) {
-                        targets.insert(cell.position);
-                        targets.insert(cell.position);
-                        log::log("Triple selecting", cell.position);
-                    }
-                }
             }
         }
 
@@ -535,6 +523,22 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        position_map<bool> fresh_dropoffs;
+        for (auto it : me->dropoffs) {
+            int close_check = 3;
+            Halite halite_around = 0;
+            for (int dy = -close_check; dy <= close_check; ++dy) {
+                for (int dx = -close_check; dx <= close_check; ++dx) {
+                    if (abs(dx) + abs(dy) > close_check) continue;
+                    Position pd(it.second->position.x + dx,
+                                it.second->position.y + dy);
+
+                    halite_around += game_map->at(pd)->halite;
+                }
+            }
+            fresh_dropoffs[it.second->position] = halite_around >= DROPOFF_COST;
+        }
+
         end = steady_clock::now();
         log::log("Millis: ", duration_cast<milliseconds>(end - begin).count());
 
@@ -563,8 +567,8 @@ int main(int argc, char* argv[]) {
 
                     Halite profit = cell->halite - dist[p];
 
-                    bool should_inspire =
-                        game.players.size() == 4 || d <= INSPIRATION_RADIUS;
+                    bool should_inspire = true;  // game.players.size() == 4 ||
+                                                 // d <= 2 * INSPIRATION_RADIUS;
                     if (cell->inspired && should_inspire)
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     if (d <= 2 && cell->ship &&
@@ -574,7 +578,10 @@ int main(int argc, char* argv[]) {
                     }
                     // Rush to new dropoff.
                     if (future_dropoff &&
-                        game_map->calc_dist(future_dropoff->position, p) <= 3) {
+                        game_map->calc_dist(future_dropoff->position, p) <= 3 &&
+                        (!fresh_dropoffs[game_map->at(ship)->closest_base] ||
+                         game_map->at(ship)->closest_base ==
+                             future_dropoff->position)) {
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
                     }
                     profit = min(profit, MAX_HALITE - ship->halite);
@@ -698,7 +705,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 250) {
+                            .count() > 750) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
