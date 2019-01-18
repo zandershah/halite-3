@@ -24,6 +24,8 @@ bool should_spawn_ewma = true;
 
 bool started_hard_return = false;
 
+double average_halite_left = 0.0;
+
 unordered_map<EntityId, int> last_moved;
 
 inline Halite extracted(Halite h) {
@@ -158,7 +160,9 @@ struct WalkState {
     double evaluate() const {
         const Halite h = ship_halite - burned_halite;
         double rate;
-        if (tasks[ship_id] == EXPLORE && !game.game_map->at(p)->really_there) {
+        if (tasks[ship_id] == EXPLORE &&
+            (!game.game_map->at(p)->really_there ||
+             game.game_map->at(p)->ship->halite + MAX_HALITE * 0.25 < h)) {
             rate = (h - starting_ship_halite) / turns;
         } else {
             rate = h / pow(turns, 4);
@@ -362,8 +366,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        Halite current_halite = 0;
-        bool all_empty = true;
         multiset<Position> targets;
         for (Position p : future_collisions) {
             targets.insert(p);
@@ -371,6 +373,8 @@ int main(int argc, char* argv[]) {
             log::log("Collision at", p);
         }
 
+        Halite current_halite = 0;
+        bool all_empty = true;
         future_collisions.clear();
         for (vector<MapCell>& cell_row : game_map->cells) {
             for (MapCell& cell : cell_row) {
@@ -394,12 +398,13 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        average_halite_left = current_halite * 1.0 / total_ships;
+
         for (auto& player : game.players) {
             if (player->id == me->id) continue;
             for (auto& it : player->ships) {
-                if (it.second->halite > current_halite * 1.0 / total_halite) {
+                if (it.second->halite > average_halite_left) {
                     // Fight them.
-                    targets.insert(it.second->position);
                     targets.insert(it.second->position);
                     targets.insert(it.second->position);
                 }
@@ -480,7 +485,7 @@ int main(int argc, char* argv[]) {
             if (started_hard_return) tasks[id] = HARD_RETURN;
 
             double halite_cutoff =
-                max(MAX_HALITE * 0.5, current_halite * 3.0 / total_ships);
+                max(MAX_HALITE * 0.5, 3 * average_halite_left);
             halite_cutoff = min(halite_cutoff, HALITE_RETURN);
             switch (tasks[id]) {
                 case EXPLORE:
@@ -538,7 +543,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        position_map<bool> fresh_dropoffs;
+        set<Position> fresh_dropoffs;
         for (auto it : me->dropoffs) {
             int close_check = 3;
             Halite halite_around = 0;
@@ -551,7 +556,8 @@ int main(int argc, char* argv[]) {
                     halite_around += game_map->at(pd)->halite;
                 }
             }
-            fresh_dropoffs[it.second->position] = halite_around >= DROPOFF_COST;
+            if (halite_around >= DROPOFF_COST)
+                fresh_dropoffs.insert(it.second->position);
         }
 
         end = steady_clock::now();
@@ -582,23 +588,30 @@ int main(int argc, char* argv[]) {
 
                     Halite profit = cell->halite - dist[p];
 
-                    if (cell->inspired())
-                        profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (cell->ship && cell->ship->owner != game.my_id &&
-                        cell->really_there &&
-                        (d <= 2 ||
-                         cell->halite > current_halite * 1.0 / total_ships)) {
-                        profit += (INSPIRED_BONUS_MULTIPLIER + 1) *
-                                  cell->ship->halite;
-                    }
+                    const int IBS = INSPIRED_BONUS_MULTIPLIER;
+
+                    if (cell->inspired()) profit += IBS * cell->halite;
+
                     // Rush to new dropoff.
                     if (future_dropoff &&
-                        game_map->calc_dist(future_dropoff->position, p) <= 2 &&
-                        (!fresh_dropoffs[game_map->at(ship)->closest_base] ||
+                        game_map->calc_dist(future_dropoff->position, p) <= 3 &&
+                        (!fresh_dropoffs.count(
+                             game_map->at(ship)->closest_base) ||
                          game_map->at(ship)->closest_base ==
                              future_dropoff->position)) {
-                        profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
+                        profit += IBS * cell->halite;
                     }
+
+                    if (cell->ship && cell->ship->owner != game.my_id &&
+                        cell->really_there &&
+                        (d <= 2 || cell->halite > average_halite_left)) {
+                        Halite collision_halite = cell->ship->halite;
+                        if (cell->inspired())
+                            collision_halite += IBS * collision_halite;
+                        if (profit + ship->halite < collision_halite)
+                            profit = collision_halite;
+                    }
+
                     profit = min(profit, MAX_HALITE - ship->halite);
 
                     if (!safe_to_move(ship, p)) profit = 0;
@@ -719,7 +732,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 250) {
+                            .count() > 750) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -859,7 +872,7 @@ int main(int argc, char* argv[]) {
 
         bool should_spawn = !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
-        should_spawn &= current_halite * 2.0 / total_ships > SHIP_COST;
+        should_spawn &= 2 * average_halite_left > SHIP_COST;
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 5;
 
