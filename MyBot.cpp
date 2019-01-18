@@ -158,7 +158,7 @@ struct WalkState {
     double evaluate() const {
         const Halite h = ship_halite - burned_halite;
         double rate;
-        if (tasks[ship_id] == EXPLORE) {
+        if (tasks[ship_id] == EXPLORE && !game.game_map->at(p)->really_there) {
             rate = (h - starting_ship_halite) / turns;
         } else {
             rate = h / pow(turns, 4);
@@ -394,6 +394,18 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        for (auto& player : game.players) {
+            if (player->id == me->id) continue;
+            for (auto& it : player->ships) {
+                if (it.second->halite > current_halite * 1.0 / total_halite) {
+                    // Fight them.
+                    targets.insert(it.second->position);
+                    targets.insert(it.second->position);
+                    targets.insert(it.second->position);
+                }
+            }
+        }
+
         for (auto& it : me->ships) {
             MapCell* cell = game_map->at(it.second);
             auto moves = game_map->get_moves(cell->position, cell->closest_base,
@@ -572,14 +584,16 @@ int main(int argc, char* argv[]) {
 
                     if (cell->inspired())
                         profit += INSPIRED_BONUS_MULTIPLIER * cell->halite;
-                    if (d <= 2 && cell->ship &&
-                        cell->ship->owner != game.my_id && cell->really_there) {
+                    if (cell->ship && cell->ship->owner != game.my_id &&
+                        cell->really_there &&
+                        (d <= 2 ||
+                         cell->halite > current_halite * 1.0 / total_ships)) {
                         profit += (INSPIRED_BONUS_MULTIPLIER + 1) *
                                   cell->ship->halite;
                     }
                     // Rush to new dropoff.
                     if (future_dropoff &&
-                        game_map->calc_dist(future_dropoff->position, p) <= 3 &&
+                        game_map->calc_dist(future_dropoff->position, p) <= 2 &&
                         (!fresh_dropoffs[game_map->at(ship)->closest_base] ||
                          game_map->at(ship)->closest_base ==
                              future_dropoff->position)) {
@@ -792,9 +806,7 @@ int main(int argc, char* argv[]) {
                  return u.second > v.second;
              });
         if (!futures.empty() && !future_dropoff) {
-            wanted = DROPOFF_COST -
-                     game_map->at(futures.front().first)->halite -
-                     HALITE_RETURN * 0.65;
+            wanted = DROPOFF_COST - game_map->at(futures.front().first)->halite;
 
             Halite fluff = 0;
             // Turns before.
