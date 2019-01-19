@@ -160,9 +160,7 @@ struct WalkState {
     double evaluate() const {
         const Halite h = ship_halite - burned_halite;
         double rate;
-        if (tasks[ship_id] == EXPLORE &&
-            (!game.game_map->at(p)->really_there ||
-             game.game_map->at(p)->ship->halite + MAX_HALITE * 0.25 < h)) {
+        if (tasks[ship_id] == EXPLORE && !game.game_map->at(p)->really_there) {
             rate = (h - starting_ship_halite) / turns;
         } else {
             rate = h / pow(turns, 4);
@@ -228,7 +226,7 @@ Halite ideal_dropoff(Position p) {
         local_dropoffs |=
             game_map->calc_dist(p, it.second->position) <= close_dropoff;
 
-    int close_check = 3;
+    int close_check = 5;
     Halite halite_around = 0;
     double s = 0;
     for (int dy = -close_check; dy <= close_check; ++dy) {
@@ -303,8 +301,6 @@ int main(int argc, char* argv[]) {
 
         safe_to_move_cache.clear();
         ideal_dropoff_cache.clear();
-        if (me->ships.size() >= 75 || game_map->width >= 56) PADDING = 15;
-        if (me->ships.size() >= 100 && game_map->width == 64) PADDING = 5;
 
         int total_ships = 0;
         for (auto player : game.players) total_ships += player->ships.size();
@@ -545,7 +541,7 @@ int main(int argc, char* argv[]) {
 
         set<Position> fresh_dropoffs;
         for (auto it : me->dropoffs) {
-            int close_check = 3;
+            int close_check = 5;
             Halite halite_around = 0;
             for (int dy = -close_check; dy <= close_check; ++dy) {
                 for (int dx = -close_check; dx <= close_check; ++dx) {
@@ -592,7 +588,6 @@ int main(int argc, char* argv[]) {
 
                     if (cell->inspired()) profit += IBS * cell->halite;
 
-                    // Rush to new dropoff.
                     if (future_dropoff &&
                         game_map->calc_dist(future_dropoff->position, p) <= 3 &&
                         (!fresh_dropoffs.count(
@@ -603,7 +598,9 @@ int main(int argc, char* argv[]) {
                     }
 
                     if (cell->ship && cell->ship->owner != game.my_id &&
-                        cell->really_there) {
+                        cell->really_there &&
+                        (game.players.size() == 2 || d <= 2 ||
+                         cell->halite > average_halite_left)) {
                         Halite collision_halite = cell->ship->halite;
                         if (cell->inspired())
                             collision_halite += IBS * collision_halite;
@@ -731,7 +728,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 1250) {
+                            .count() > 50) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
@@ -818,7 +815,9 @@ int main(int argc, char* argv[]) {
                  return u.second > v.second;
              });
         if (!futures.empty() && !future_dropoff) {
-            wanted = DROPOFF_COST - game_map->at(futures.front().first)->halite;
+            wanted = DROPOFF_COST -
+                     game_map->at(futures.front().first)->halite -
+                     HALITE_RETURN * 0.5;
 
             Halite fluff = 0;
             // Turns before.
@@ -830,7 +829,7 @@ int main(int argc, char* argv[]) {
                     game_map->calc_dist(ship->position, ship->next) > 5) {
                     continue;
                 }
-                fluff += ship->halite * 0.85;
+                fluff += ship->halite * 0.95;
             }
 
             if (wanted - fluff <= me->halite) {
@@ -887,7 +886,7 @@ int main(int argc, char* argv[]) {
                     ship->next == future_dropoff->position)
                     continue;
                 if (game_map->calc_dist(ship->position, ship->next) < d)
-                    fluff += ship->halite * 0.85;
+                    fluff += ship->halite * 0.95;
             }
 
             if (fluff) log::log("Fluff!", fluff);
