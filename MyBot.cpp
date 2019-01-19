@@ -603,8 +603,7 @@ int main(int argc, char* argv[]) {
                     }
 
                     if (cell->ship && cell->ship->owner != game.my_id &&
-                        cell->really_there &&
-                        (d <= 2 || cell->halite > average_halite_left)) {
+                        cell->really_there) {
                         Halite collision_halite = cell->ship->halite;
                         if (cell->inspired())
                             collision_halite += IBS * collision_halite;
@@ -732,7 +731,7 @@ int main(int argc, char* argv[]) {
             while (!timeout) {
                 for (size_t i = 0; i < explorers.size() && !timeout; ++i) {
                     if (duration_cast<milliseconds>(steady_clock::now() - end)
-                            .count() > 750) {
+                            .count() > 1250) {
                         timeout = true;
                     }
                     if (duration_cast<milliseconds>(steady_clock::now() - begin)
