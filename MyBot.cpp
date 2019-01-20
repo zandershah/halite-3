@@ -600,7 +600,7 @@ int main(int argc, char* argv[]) {
 
                     if (cell->ship && cell->ship->owner != game.my_id &&
                         cell->really_there &&
-                        (game.players.size() == 2 || d <= 2 ||
+                        (game.players.size() == 2 ||
                          cell->halite > average_halite_left)) {
                         Halite collision_halite = cell->ship->halite;
                         if (cell->inspired() || future_inspire)
