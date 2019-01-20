@@ -55,7 +55,8 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     if (!cell->is_occupied()) return true;
 
     if (ship->owner == cell->ship->owner) return false;
-    if (cell->has_structure()) return cell->structure->owner == game.my_id;
+    if (cell->has_structure() && cell->structure->id != -2)
+        return cell->structure->owner == game.my_id;
     if (tasks[ship->id] == HARD_RETURN) return true;
 
     // Estimate who is closer.
@@ -83,7 +84,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
-    return game.players.size() == 2 || dropped >= 1.5 * SHIP_COST;
+    return true;
 }
 
 void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
@@ -218,7 +219,6 @@ Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     int close_dropoff = 15;
-    if (game.players.size() == 2) close_dropoff = 20;
 
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
@@ -587,15 +587,14 @@ int main(int argc, char* argv[]) {
 
                     const int IBS = INSPIRED_BONUS_MULTIPLIER;
 
-                    bool future_inspire = false;
-                    if (future_dropoff &&
+                    bool future_inspire =
+                        future_dropoff &&
                         game_map->calc_dist(future_dropoff->position, p) <= 3 &&
                         (!fresh_dropoffs.count(
                              game_map->at(ship)->closest_base) ||
                          game_map->at(ship)->closest_base ==
-                             future_dropoff->position)) {
-                        future_inspire = true;
-                    }
+                             future_dropoff->position);
+
                     if (cell->inspired() || future_inspire)
                         profit += IBS * cell->halite;
 
@@ -604,7 +603,7 @@ int main(int argc, char* argv[]) {
                         (game.players.size() == 2 || d <= 2 ||
                          cell->halite > average_halite_left)) {
                         Halite collision_halite = cell->ship->halite;
-                        if (cell->inspired())
+                        if (cell->inspired() || future_inspire)
                             collision_halite += IBS * collision_halite;
                         if (profit + ship->halite < collision_halite)
                             profit = collision_halite;
