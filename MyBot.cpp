@@ -59,32 +59,42 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         return cell->structure->owner == game.my_id;
     if (tasks[ship->id] == HARD_RETURN) return true;
 
+    // They shouldn't be walking over this.
+    if (!cell->really_there &&
+        MAX_HALITE - cell->ship->halite < extracted(cell->halite)) {
+        return true;
+    }
+    Halite dropped = ship->halite + cell->ship->halite + cell->halite;
+    if (cell->inspired()) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
+
     // Estimate who is closer.
     if (!safe_to_move_cache.count(p)) {
         int closeness = 0;
         for (auto& it : game.me->ships) {
+            if (MAX_HALITE - it.second->halite < extracted(dropped)) continue;
             if (tasks[it.second->id] != EXPLORE) continue;
             int d = game_map->calc_dist(p, it.second->position);
             closeness += d <= 3;
         }
         for (auto& it : game.players[cell->ship->owner]->ships) {
             if (it.second->id == cell->ship->id) continue;
+            if (MAX_HALITE - it.second->halite < extracted(dropped)) continue;
             int d = game_map->calc_dist(p, it.second->position);
             closeness -= d <= 3;
         }
         safe_to_move_cache[p] = closeness;
     }
 
-    const int d = game_map->calc_dist(p, ship->position);
-    const int closeness = safe_to_move_cache[p] - (d <= 3);
+    int closeness = safe_to_move_cache[p];
+    if (MAX_HALITE - ship->halite < extracted(dropped))
+        closeness -= game_map->calc_dist(p, ship->position) <= 3;
 
-    Halite dropped = ship->halite + cell->ship->halite + cell->halite;
-    if (cell->inspired()) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
     if (closeness <= 0 ||
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
-    return game.players.size() == 2 || dropped >= 1.5 * SHIP_COST;
+    if (game.players.size() == 2) return true;
+    return dropped >= min(1.5 * SHIP_COST, 3 * average_halite_left);
 }
 
 void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
@@ -772,8 +782,8 @@ int main(int argc, char* argv[]) {
                 for (auto& it : surrounding_cost) {
                     if (safe_to_move(explorers[i], it.first))
                         cost_matrix[i][move_indices[it.first]] = it.second;
-                    else if (game_map->at(it.first)->ship->owner != me->id)
-                        cost_matrix[i][move_indices[it.first]] = 1e7;
+                    else if (game_map->at(it.first)->ship->owner == me->id)
+                        cost_matrix[i][move_indices[it.first]] = 1e9;
                 }
             }
 

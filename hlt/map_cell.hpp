@@ -35,7 +35,9 @@ struct MapCell {
         return close_enemies >= constants::INSPIRATION_SHIP_COUNT;
     }
 
-    void mark_unsafe(std::shared_ptr<Ship>& ship) { this->ship = ship; }
+    void mark_unsafe(std::shared_ptr<Ship>& ship) {
+        if (!this->ship || this->ship->halite > ship->halite) this->ship = ship;
+    }
 };
 
 }  // namespace hlt
