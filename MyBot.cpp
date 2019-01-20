@@ -218,6 +218,7 @@ Halite ideal_dropoff(Position p) {
     unique_ptr<GameMap>& game_map = game.game_map;
 
     int close_dropoff = 15;
+    if (game.players.size() == 2) close_dropoff = 20;
 
     bool local_dropoffs = game_map->at(p)->has_structure();
     local_dropoffs |=
@@ -268,7 +269,7 @@ Halite ideal_dropoff(Position p) {
 
     Halite saved = halite_around;
 
-    bool ideal = saved >= DROPOFF_COST;
+    bool ideal = saved >= DROPOFF_COST + SHIP_COST;
     ideal &= !local_dropoffs;
     ideal &= game.turn_number <= MAX_TURNS - 50;
     ideal &= !started_hard_return;
@@ -552,7 +553,7 @@ int main(int argc, char* argv[]) {
                     halite_around += game_map->at(pd)->halite;
                 }
             }
-            if (halite_around >= DROPOFF_COST)
+            if (halite_around >= DROPOFF_COST + SHIP_COST)
                 fresh_dropoffs.insert(it.second->position);
         }
 
@@ -586,16 +587,17 @@ int main(int argc, char* argv[]) {
 
                     const int IBS = INSPIRED_BONUS_MULTIPLIER;
 
-                    if (cell->inspired()) profit += IBS * cell->halite;
-
+                    bool future_inspire = false;
                     if (future_dropoff &&
                         game_map->calc_dist(future_dropoff->position, p) <= 3 &&
                         (!fresh_dropoffs.count(
                              game_map->at(ship)->closest_base) ||
                          game_map->at(ship)->closest_base ==
                              future_dropoff->position)) {
-                        profit += IBS * cell->halite;
+                        future_inspire = true;
                     }
+                    if (cell->inspired() || future_inspire)
+                        profit += IBS * cell->halite;
 
                     if (cell->ship && cell->ship->owner != game.my_id &&
                         cell->really_there &&
@@ -815,9 +817,7 @@ int main(int argc, char* argv[]) {
                  return u.second > v.second;
              });
         if (!futures.empty() && !future_dropoff) {
-            wanted = DROPOFF_COST -
-                     game_map->at(futures.front().first)->halite -
-                     HALITE_RETURN * 0.5;
+            wanted = DROPOFF_COST - game_map->at(futures.front().first)->halite;
 
             Halite fluff = 0;
             // Turns before.
