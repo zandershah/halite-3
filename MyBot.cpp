@@ -84,7 +84,7 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
         return false;
     }
-    return true;
+    return game.players.size() == 2 || dropped >= 1.5 * SHIP_COST;
 }
 
 void bfs(position_map<Halite>& dist, shared_ptr<Ship> ship) {
@@ -248,6 +248,11 @@ Halite ideal_dropoff(Position p) {
                             enemy_pq.push(d);
                         while (ally_pq.size() > 3) ally_pq.pop();
                         while (enemy_pq.size() > 3) enemy_pq.pop();
+
+                        if (player->id != game.my_id &&
+                            it.second->position == p) {
+                            return 0;
+                        }
                     }
                 }
                 int ally = 0, enemy = 0;
@@ -276,9 +281,11 @@ Halite ideal_dropoff(Position p) {
     // ideal &= local_ships >= 3;
 
     double bases = 2.0 + game.me->dropoffs.size();
-    ideal &= game.me->ships.size() / bases >= 7;
+    int bb = 7;
+    if (game.players.size() == 4 && game_map->width == 32) bb = 4;
+    ideal &= game.me->ships.size() / bases >= bb;
 
-    return ideal * saved;
+    return ideal * saved * game_map->at(p)->halite;
 }
 
 int main(int argc, char* argv[]) {
@@ -464,6 +471,23 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        set<Position> fresh_dropoffs;
+        for (auto it : me->dropoffs) {
+            int close_check = 5;
+            Halite halite_around = 0;
+            for (int dy = -close_check; dy <= close_check; ++dy) {
+                for (int dx = -close_check; dx <= close_check; ++dx) {
+                    if (abs(dx) + abs(dy) > close_check) continue;
+                    Position pd(it.second->position.x + dx,
+                                it.second->position.y + dy);
+
+                    halite_around += game_map->at(pd)->halite;
+                }
+            }
+            if (halite_around >= DROPOFF_COST + SHIP_COST)
+                fresh_dropoffs.insert(it.second->position);
+        }
+
         log::log("Tasks.");
         vector<shared_ptr<Ship>> returners, explorers;
         for (auto& it : me->ships) {
@@ -521,40 +545,20 @@ int main(int argc, char* argv[]) {
                 case HARD_RETURN:
                     if (ship->position == cell->closest_base) break;
                 case RETURN:
-                    if (future_dropoff) {
+                    ship->next = cell->closest_base;
+                    for (Position fresh : fresh_dropoffs) {
                         int d_close =
-                            game_map->calc_dist(cell->closest_base, ship->next);
-                        int d_new = game_map->calc_dist(
-                            future_dropoff->position, ship->next);
-                        int d_apart = game_map->calc_dist(
-                            cell->closest_base, future_dropoff->position);
-                        if (d_close > 5 && d_new < d_apart) {
-                            ship->next = future_dropoff->position;
-                        } else {
-                            ship->next = cell->closest_base;
+                            game_map->calc_dist(ship->position, ship->next);
+                        int d_new = game_map->calc_dist(ship->position, fresh);
+                        int d_apart = game_map->calc_dist(ship->next, fresh);
+                        if (d_close > 5 && d_new <= d_apart &&
+                            (!fresh_dropoffs.count(ship->next) ||
+                             d_new < d_close)) {
+                            ship->next = fresh;
                         }
-                    } else {
-                        ship->next = cell->closest_base;
                     }
                     returners.push_back(ship);
             }
-        }
-
-        set<Position> fresh_dropoffs;
-        for (auto it : me->dropoffs) {
-            int close_check = 5;
-            Halite halite_around = 0;
-            for (int dy = -close_check; dy <= close_check; ++dy) {
-                for (int dx = -close_check; dx <= close_check; ++dx) {
-                    if (abs(dx) + abs(dy) > close_check) continue;
-                    Position pd(it.second->position.x + dx,
-                                it.second->position.y + dy);
-
-                    halite_around += game_map->at(pd)->halite;
-                }
-            }
-            if (halite_around >= DROPOFF_COST + SHIP_COST)
-                fresh_dropoffs.insert(it.second->position);
         }
 
         end = steady_clock::now();
@@ -684,7 +688,6 @@ int main(int argc, char* argv[]) {
 
                 for (size_t i = 0; i < explorers.size(); ++i) {
                     explorers[i]->next = target_space[assignment[i]];
-                    message(explorers[i]->next, "green");
                 }
             }
 
@@ -806,7 +809,7 @@ int main(int argc, char* argv[]) {
 
             double d = 1;
             for (auto it : me->ships)
-                d += sqrt(game_map->calc_dist(p, it.second->position));
+                d += pow(game_map->calc_dist(p, it.second->position), 2);
             d /= me->ships.size();
 
             futures.emplace_back(p, ideal / d);
@@ -820,10 +823,7 @@ int main(int argc, char* argv[]) {
 
             Halite fluff = 0;
             // Turns before.
-            int d = 1e3;
             for (auto ship : explorers) {
-                d = min(d, game_map->calc_dist(ship->position,
-                                               future_dropoff->position));
                 if (tasks[ship->id] != RETURN ||
                     game_map->calc_dist(ship->position, ship->next) > 5) {
                     continue;
