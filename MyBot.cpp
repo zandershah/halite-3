@@ -49,8 +49,7 @@ inline bool hard_stuck(shared_ptr<Ship> ship) {
 }
 
 position_map<int> safe_to_move_cache;
-bool safe_to_move(shared_ptr<Ship> ship, Position p) {
-    // TODO: Make this work for enemy ships.
+bool safe_to_move(shared_ptr<Ship> ship, Position p, bool print = false) {
     unique_ptr<GameMap>& game_map = game.game_map;
     MapCell* cell = game_map->at(p);
 
@@ -66,8 +65,12 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         MAX_HALITE - cell->ship->halite < extracted(cell->halite)) {
         return true;
     }
-    Halite dropped = ship->halite + cell->ship->halite + cell->halite;
-    if (cell->inspired()) dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
+    Halite dropped = ship->halite + cell->ship->halite;
+    Halite already = cell->halite;
+    if (cell->inspired()) {
+        dropped += INSPIRED_BONUS_MULTIPLIER * dropped;
+        already += INSPIRED_BONUS_MULTIPLIER * already;
+    }
 
     // Estimate who is closer.
     if (!safe_to_move_cache.count(p)) {
@@ -75,7 +78,8 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
         for (auto player : game.players) {
             for (auto& it : player->ships) {
                 if (it.second->id == cell->ship->id) continue;
-                if (MAX_HALITE - it.second->halite < extracted(dropped))
+                if (MAX_HALITE - it.second->halite <
+                    extracted(dropped + already))
                     continue;
                 if (player->id == game.my_id && tasks[it.second->id] != EXPLORE)
                     continue;
@@ -90,8 +94,13 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     }
 
     int closeness = safe_to_move_cache[p];
-    if (MAX_HALITE - ship->halite < extracted(dropped))
+    if (MAX_HALITE - ship->halite < extracted(dropped + already))
         closeness -= game_map->calc_dist(p, ship->position) <= 3;
+
+    if (print) {
+        log::log(ship->id, "From:", ship->position, "To:", p,
+                 "Closeness:", closeness, "Dropped:", dropped);
+    }
 
     if (closeness <= 0 ||
         ship->halite > cell->ship->halite + MAX_HALITE * 0.25) {
@@ -306,7 +315,7 @@ Halite ideal_dropoff(Position p) {
 }
 
 int main(int argc, char* argv[]) {
-    game.ready("HaoHaoBotFinalFinal");
+    game.ready("BabuBot");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
 
@@ -795,12 +804,45 @@ int main(int argc, char* argv[]) {
                         surrounding_cost[p] = 1e7;
                 }
 
+                bool print = false;
                 for (auto& it : surrounding_cost) {
-                    if (safe_to_move(explorers[i], it.first))
+                    if (safe_to_move(explorers[i], it.first)) {
                         cost_matrix[i][move_indices[it.first]] = it.second;
-                    else if (game_map->at(it.first)->ship->owner != me->id)
+                    } else if (game_map->at(it.first)->ship->owner != me->id) {
                         cost_matrix[i][move_indices[it.first]] = 1e7;
-                    // TODO: Order possible collisions.
+#if 0
+                        safe_to_move(explorers[i], it.first, true);
+                        print = true;
+                        // Four cases.
+                        Halite enemy_halite =
+                            game_map->at(it.first)->ship->halite;
+                        if (game_map->at(it.first)->really_there) {
+                            if (explorers[i]->halite <
+                                enemy_halite - MAX_HALITE * 0.25) {
+                                // We have at least 250 less halite. They don't
+                                // want to collide.
+                                cost_matrix[i][move_indices[it.first]] = 1e4;
+                            } else {
+                                cost_matrix[i][move_indices[it.first]] = 1e7;
+                            }
+                        } else {
+                            if (enemy_halite <
+                                explorers[i]->halite + MAX_HALITE * 0.25) {
+                                cost_matrix[i][move_indices[it.first]] = 1e7;
+                            } else {
+                                cost_matrix[i][move_indices[it.first]] = 1e6;
+                            }
+                        }
+#endif
+                    }
+                }
+                if (print) {
+                    log::log("Ship", explorers[i]->id);
+                    for (auto& it : surrounding_cost) {
+                        safe_to_move(explorers[i], it.first, true);
+                        log::log(it.first, it.second);
+                    }
+                    log::log("Done.");
                 }
             }
 
