@@ -34,6 +34,7 @@ inline Halite extracted(Halite h) {
 
 shared_ptr<Dropoff> future_dropoff;
 set<Position> future_collisions;
+map<Position, int> recent_collisions;
 
 // Fluorine JSON.
 stringstream flog;
@@ -49,6 +50,7 @@ inline bool hard_stuck(shared_ptr<Ship> ship) {
 
 position_map<int> safe_to_move_cache;
 bool safe_to_move(shared_ptr<Ship> ship, Position p) {
+    // TODO: Make this work for enemy ships.
     unique_ptr<GameMap>& game_map = game.game_map;
     MapCell* cell = game_map->at(p);
 
@@ -70,17 +72,19 @@ bool safe_to_move(shared_ptr<Ship> ship, Position p) {
     // Estimate who is closer.
     if (!safe_to_move_cache.count(p)) {
         int closeness = 0;
-        for (auto& it : game.me->ships) {
-            if (MAX_HALITE - it.second->halite < extracted(dropped)) continue;
-            if (tasks[it.second->id] != EXPLORE) continue;
-            int d = game_map->calc_dist(p, it.second->position);
-            closeness += d <= 3;
-        }
-        for (auto& it : game.players[cell->ship->owner]->ships) {
-            if (it.second->id == cell->ship->id) continue;
-            if (MAX_HALITE - it.second->halite < extracted(dropped)) continue;
-            int d = game_map->calc_dist(p, it.second->position);
-            closeness -= d <= 3;
+        for (auto player : game.players) {
+            for (auto& it : player->ships) {
+                if (it.second->id == cell->ship->id) continue;
+                if (MAX_HALITE - it.second->halite < extracted(dropped))
+                    continue;
+                if (player->id == game.my_id && tasks[it.second->id] != EXPLORE)
+                    continue;
+                int d = game_map->calc_dist(p, it.second->position);
+                if (player->id == game.my_id)
+                    closeness += d <= 3;
+                else
+                    closeness -= d <= 3;
+            }
         }
         safe_to_move_cache[p] = closeness;
     }
@@ -169,9 +173,11 @@ struct WalkState {
     }
 
     double evaluate() const {
-        const Halite h = ship_halite - burned_halite;
+        Halite h = ship_halite - burned_halite;
+        if (game.game_map->at(p)->really_there)
+            h += game.game_map->at(p)->ship->halite;
         double rate;
-        if (tasks[ship_id] == EXPLORE && !game.game_map->at(p)->really_there) {
+        if (tasks[ship_id] == EXPLORE) {
             rate = (h - starting_ship_halite) / turns;
         } else {
             rate = h / pow(turns, 4);
@@ -195,6 +201,7 @@ WalkState random_walk(shared_ptr<Ship> ship, Position d) {
         });
         moves.erase(rit, moves.end());
         if (moves.empty()) {
+            // TODO: Add sideways moves when only waking in a line.
             // We try to add all moves.
             for (Direction d : ALL_CARDINALS) {
                 if (safe_to_move(ship, ws.p.doff(d))) moves.push_back(d);
@@ -237,7 +244,7 @@ Halite ideal_dropoff(Position p) {
         local_dropoffs |=
             game_map->calc_dist(p, it.second->position) <= close_dropoff;
 
-    int close_check = 5;
+    int close_check = game_map->width < 48 ? 3 : 5;
     Halite halite_around = 0;
     double s = 0;
     for (int dy = -close_check; dy <= close_check; ++dy) {
@@ -292,14 +299,14 @@ Halite ideal_dropoff(Position p) {
 
     double bases = 2.0 + game.me->dropoffs.size();
     int bb = 7;
-    if (game.players.size() == 4 && game_map->width == 32) bb = 4;
+    if (game.players.size() == 4 && game_map->width <= 40) bb = 5;
     ideal &= game.me->ships.size() / bases >= bb;
 
-    return ideal * saved * game_map->at(p)->halite;
+    return ideal * saved * sqrt(game_map->at(p)->halite);
 }
 
 int main(int argc, char* argv[]) {
-    game.ready("HaoHaoBot");
+    game.ready("HaoHaoBotFinalFinal");
 
     HALITE_RETURN = MAX_HALITE * 0.95;
 
@@ -382,14 +389,23 @@ int main(int argc, char* argv[]) {
 
         multiset<Position> targets;
         for (Position p : future_collisions) {
-            targets.insert(p);
-            targets.insert(p);
+            recent_collisions[p] = game.turn_number;
             log::log("Collision at", p);
+        }
+        future_collisions.clear();
+        for (auto it = recent_collisions.begin();
+             it != recent_collisions.end();) {
+            if (game.turn_number - it->second >= 5) {
+                recent_collisions.erase(it++);
+            } else {
+                targets.insert(it->first);
+                targets.insert(it->first);
+                ++it;
+            }
         }
 
         Halite current_halite = 0;
         bool all_empty = true;
-        future_collisions.clear();
         for (vector<MapCell>& cell_row : game_map->cells) {
             for (MapCell& cell : cell_row) {
                 Position p = cell.position;
@@ -419,8 +435,8 @@ int main(int argc, char* argv[]) {
             for (auto& it : player->ships) {
                 if (it.second->halite > average_halite_left) {
                     // Fight them.
-                    targets.insert(it.second->position);
-                    targets.insert(it.second->position);
+                    // targets.insert(it.second->position);
+                    // targets.insert(it.second->position);
                 }
             }
         }
@@ -483,7 +499,7 @@ int main(int argc, char* argv[]) {
 
         set<Position> fresh_dropoffs;
         for (auto it : me->dropoffs) {
-            int close_check = 5;
+            int close_check = game_map->width < 48 ? 3 : 5;
             Halite halite_around = 0;
             for (int dy = -close_check; dy <= close_check; ++dy) {
                 for (int dx = -close_check; dx <= close_check; ++dx) {
@@ -516,7 +532,7 @@ int main(int argc, char* argv[]) {
             if (started_hard_return) tasks[id] = HARD_RETURN;
 
             double halite_cutoff =
-                max(MAX_HALITE * 0.5, 3 * average_halite_left);
+                max(HALITE_RETURN * 0.1, 3 * average_halite_left);
             halite_cutoff = min(halite_cutoff, HALITE_RETURN);
             switch (tasks[id]) {
                 case EXPLORE:
@@ -535,7 +551,7 @@ int main(int argc, char* argv[]) {
                 command_queue.push_back(ship->stay_still());
                 targets.erase(ship->position);
                 future_collisions.insert(ship->position);
-                game_map->at(ship)->mark_unsafe(ship);
+                game_map->at(ship)->ship = ship;
                 continue;
             }
 
@@ -620,7 +636,7 @@ int main(int argc, char* argv[]) {
                         if (cell->inspired() || future_inspire)
                             collision_halite += IBS * collision_halite;
                         if (profit + ship->halite < collision_halite)
-                            profit = collision_halite;
+                            profit += collision_halite;
                     }
 
                     profit = min(profit, MAX_HALITE - ship->halite);
@@ -782,8 +798,9 @@ int main(int argc, char* argv[]) {
                 for (auto& it : surrounding_cost) {
                     if (safe_to_move(explorers[i], it.first))
                         cost_matrix[i][move_indices[it.first]] = it.second;
-                    else if (game_map->at(it.first)->ship->owner == me->id)
-                        cost_matrix[i][move_indices[it.first]] = 1e9;
+                    else if (game_map->at(it.first)->ship->owner != me->id)
+                        cost_matrix[i][move_indices[it.first]] = 1e7;
+                    // TODO: Order possible collisions.
                 }
             }
 
@@ -794,7 +811,7 @@ int main(int argc, char* argv[]) {
 
             for (size_t i = 0; i < assignment.size(); ++i) {
                 if (explorers[i]->position == move_space[assignment[i]]) {
-                    game_map->at(explorers[i])->mark_unsafe(explorers[i]);
+                    game_map->at(explorers[i])->ship = explorers[i];
                     command_queue.push_back(explorers[i]->stay_still());
                     future_collisions.insert(explorers[i]->position);
                 }
@@ -804,7 +821,7 @@ int main(int argc, char* argv[]) {
                     if (pp == move_space[assignment[i]]) {
                         command_queue.push_back(explorers[i]->move(d));
                         future_collisions.insert(pp);
-                        game_map->at(pp)->mark_unsafe(explorers[i]);
+                        game_map->at(pp)->ship = explorers[i];
                         last_moved[explorers[i]->id] = game.turn_number;
                         break;
                     }
@@ -817,9 +834,10 @@ int main(int argc, char* argv[]) {
             Halite ideal = ideal_dropoff(p);
             if (!ideal) continue;
 
+            const int pp = 4 / game.players.size();
             double d = 1;
             for (auto it : me->ships)
-                d += pow(game_map->calc_dist(p, it.second->position), 2);
+                d += pow(game_map->calc_dist(p, it.second->position), pp);
             d /= me->ships.size();
 
             futures.emplace_back(p, ideal / d);
