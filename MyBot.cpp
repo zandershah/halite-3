@@ -582,17 +582,6 @@ int main(int argc, char* argv[]) {
                     if (ship->position == cell->closest_base) break;
                 case RETURN:
                     ship->next = cell->closest_base;
-                    for (Position fresh : fresh_dropoffs) {
-                        int d_close =
-                            game_map->calc_dist(ship->position, ship->next);
-                        int d_new = game_map->calc_dist(ship->position, fresh);
-                        int d_apart = game_map->calc_dist(ship->next, fresh);
-                        if (d_close > 5 && d_new <= d_apart &&
-                            (!fresh_dropoffs.count(ship->next) ||
-                             d_new < d_close)) {
-                            ship->next = fresh;
-                        }
-                    }
                     returners.push_back(ship);
             }
         }
@@ -816,8 +805,8 @@ int main(int argc, char* argv[]) {
                     if (safe_to_move(explorers[i], it.first)) {
                         cost_matrix[i][move_indices[it.first]] = it.second;
                     } else if (game_map->at(it.first)->ship->owner != me->id) {
-                        safe_to_move(explorers[i], it.first, true);
-                        print = true;
+                        // safe_to_move(explorers[i], it.first, true);
+                        // print = true;
 
                         // Four cases.
                         Halite enemy_halite =
@@ -893,23 +882,48 @@ int main(int argc, char* argv[]) {
                  return u.second > v.second;
              });
         if (!futures.empty() && !future_dropoff) {
-            wanted = DROPOFF_COST - game_map->at(futures.front().first)->halite;
+            futures.resize(3);
+            for (auto future : futures) {
+                wanted = DROPOFF_COST - game_map->at(future.first)->halite;
 
-            Halite fluff = 0;
-            // Turns before.
-            for (auto ship : explorers) {
-                if (tasks[ship->id] != RETURN ||
-                    game_map->calc_dist(ship->position, ship->next) > 5) {
-                    continue;
+                Halite fluff = 0, forced_fluff = 0;
+                vector<shared_ptr<Ship>> forced_returners;
+                // Turns before.
+                for (auto ship : explorers) {
+                    int d_close =
+                        game_map->calc_dist(ship->position, ship->next);
+                    int d_new =
+                        game_map->calc_dist(ship->position, future.first);
+                    if (d_close >= d_new) continue;
+
+                    if (tasks[ship->id] == RETURN) {
+                        fluff += ship->halite * 0.95;
+                    } else if (ship->halite > HALITE_RETURN - 150) {
+                        forced_returners.push_back(ship);
+                        forced_fluff += ship->halite * 0.95;
+                    }
                 }
-                fluff += ship->halite * 0.95;
-            }
 
-            if (wanted - fluff <= me->halite) {
-                // message(futures.front().first, "green");
-                future_dropoff = make_shared<Dropoff>(game.my_id, -2,
-                                                      futures.front().first.x,
-                                                      futures.front().first.y);
+                sort(forced_returners.begin(), forced_returners.end(),
+                     [&](shared_ptr<Ship> u, shared_ptr<Ship> v) {
+                         return u->halite > v->halite;
+                     });
+
+                if (wanted - fluff - forced_fluff <= me->halite) {
+                    for (auto ship : forced_returners) {
+                        if (wanted - fluff <= me->halite) break;
+                        fluff += ship->halite * 0.95;
+                        tasks[ship->id] = RETURN;
+                        log::log("Forced", ship->id, "to return early.");
+                    }
+                }
+
+                if (wanted - fluff <= me->halite) {
+                    // message(futures.front().first, "green");
+                    future_dropoff = make_shared<Dropoff>(
+                        game.my_id, -2, future.first.x, future.first.y);
+                    break;
+                }
             }
         }
 
@@ -943,7 +957,7 @@ int main(int argc, char* argv[]) {
 
         bool should_spawn = !game_map->at(me->shipyard)->is_occupied();
         should_spawn &= !started_hard_return;
-        should_spawn &= 3 * average_halite_left > SHIP_COST;
+        should_spawn &= 2 * average_halite_left > SHIP_COST;
         should_spawn &= should_spawn_ewma || me->ships.size() < ship_lo;
         should_spawn &= me->ships.size() < ship_hi + 5;
 
