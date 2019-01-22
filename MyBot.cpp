@@ -444,6 +444,7 @@ int main(int argc, char* argv[]) {
             if (player->id == me->id) continue;
             for (auto& it : player->ships) {
                 if (it.second->halite > average_halite_left) {
+                    // TODO: Test if this should be reimplemented.
                     // Fight them.
                     // targets.insert(it.second->position);
                     // targets.insert(it.second->position);
@@ -541,12 +542,9 @@ int main(int argc, char* argv[]) {
             // Return if game will end soon.
             if (started_hard_return) tasks[id] = HARD_RETURN;
 
-            double halite_cutoff =
-                max(HALITE_RETURN * 0.1, 3 * average_halite_left);
-            halite_cutoff = min(halite_cutoff, HALITE_RETURN);
             switch (tasks[id]) {
                 case EXPLORE:
-                    if (ship->halite > halite_cutoff) tasks[id] = RETURN;
+                    if (ship->halite > HALITE_RETURN) tasks[id] = RETURN;
                     break;
                 case RETURN:
                     if (!closest_base_dist) {
