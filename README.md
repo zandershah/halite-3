@@ -31,6 +31,7 @@ To evaluate the current state of the game, it would be useful to know the answer
 2. How many turns will it take for a turtle to complete a full mining trip?
 
 In order to answer questions such as:
+
 3. Should I spawn a ship?
 4. Should my turtle return early?
 
