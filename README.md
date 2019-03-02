@@ -1,6 +1,6 @@
 # Halite III
 
-> Top 10 bot for Two Sigma's artificial intelligence challenge, Halite III.
+> Top 10 bot for Two Sigma's AI challenge, Halite III.
 
 Halite III was my first AI competition, so my post-mortem is written from the perspective of one with no experience in the field. I have divided it into aspects of my bot that I think are important or interesting rather than the exact strategy that my bot executes. There are no implementation details, but the majority of my bot is in MyBot.cpp so it should not be hard to find any segment I mention.
 
