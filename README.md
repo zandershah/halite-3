@@ -26,15 +26,15 @@ Unlike Halite II, this game was played over a discrete board, which allows us to
 So if we can evaluate each move and assign that cost to it's edge, we can do a maximum weighted matching on the graph in order to obtain the set of moves for your fleet. I used the Hungarian Algorithm in order to solve this.
 
 ## Stats
-To evaluate the current state of the game, it would be useful to know information such as:
+To evaluate the current state of the game, it would be useful to know the answer to questions such as:
 1. How many turns until all halite will be mined?
 2. How many turns will it take for a turtle to complete a full mining trip?
 
 In order to answer questions such as:
-i. Should I spawn a ship?
-ii. Should my turtle return early?
+3. Should I spawn a ship?
+4. Should my turtle return early?
 
-You cannot answer 1, 2 directly, but it is possible to get an estimation for them. Sampling every turn is too short of a window and will have huge amounts of noise, so I took the average over 5 turns. I used an exponentially weighted moving average after advice from a friend with a stronger stats background than me. It did not end up working as well as I hoped, but it was a good enough estimation to answer i. I would attribute this to my lack of stats knowledge and not the technique itself.
+You cannot answer 1, 2 directly, but it is possible to get an estimation for them. Sampling every turn is too short of a window and will have huge amounts of noise, so I took the average over 5 turns. I used an exponentially weighted moving average after advice from a friend with a stronger stats background than me. It did not end up working as well as I hoped, but it was a good enough estimation to answer 3. I would attribute this to my lack of stats knowledge and not the technique itself.
 
 ## Local Search
 The search space for potential paths between cells is extremely large, and I was not able to prove to myself any sort of weak ordering for path evaluation, so I did not use Dijkstra's. Instead, I turned to local search into order to solve paths. This was by no means optimal, I just didn't come up with a better way of solving the problem and the time limit was long enough that I could run enough random walks to obtain strong results. A much better method would be to use something simlar to reCurs3's Gaussian blur in order to simplify the problem.
